@@ -15,10 +15,10 @@ type Settings struct {
 	flags      []string
 }
 
-func NewSettings(chromePath, userDir, chromePort string) *Settings {
+func NewSettings(chromePath, userDir string) *Settings {
 	s := &Settings{}
 	s.chromePath = chromePath
-	s.chromePort = chromePort
+	s.chromePort = "9222"
 	s.userDir = userDir
 	s.extensions = make([]string, 0)
 	s.flags = make([]string, 0)
@@ -27,6 +27,10 @@ func NewSettings(chromePath, userDir, chromePort string) *Settings {
 
 func (s *Settings) SetChromeHost(host string) {
 	s.chromeHost = host
+}
+
+func (s *Settings) SetDebuggerPort(chromePort string) {
+	s.chromePort = chromePort
 }
 
 func (s *Settings) SetStartTimeout(timeout time.Duration) {

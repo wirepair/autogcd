@@ -25,6 +25,24 @@ func newElement(tab *Tab, id int) *Element {
 	return e
 }
 
+// Get attributes of the node in sequential name,value pairs in the slice.
+func (e *Element) GetAttributes() (map[string]string, error) {
+	attributes := make(map[string]string)
+	attr, err := e.tab.DOM().GetAttributes(e.id)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(attr); i += 2 {
+		attributes[attr[i]] = attr[i+1]
+	}
+	return attributes, nil
+}
+
+func (e *Element) GetSource() (string, error) {
+	return e.tab.DOM().GetOuterHTML(e.id)
+}
+
+// Clicks the element in the center of the element.
 func (e *Element) Click() error {
 	var x int
 	var y int
@@ -40,6 +58,28 @@ func (e *Element) Click() error {
 	}
 	// click the centroid of the element.
 	return e.tab.Click(x, y)
+}
+
+func (e *Element) SendKeys(text string) error {
+	//type ( enumerated string [ "char" , "keyDown" , "keyUp" , "rawKeyDown" ] )
+	err := e.Click()
+	if err != nil {
+		return err
+	}
+	theType := "char"
+	modifiers := 0
+	timestamp := 0.0
+	unmodifiedText := ""
+	keyIdentifier := ""
+	code := ""
+	key := ""
+	windowsVirtualKeyCode := 0
+	nativeVirtualKeyCode := 0
+	autoRepeat := false
+	isKeypad := false
+	isSystemKey := false
+	_, err = e.tab.Input().DispatchKeyEvent(theType, modifiers, timestamp, text, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+	return err
 }
 
 func (e *Element) Dimensions() ([]float64, error) {
@@ -65,5 +105,5 @@ func centroid(points []float64) (int, int, error) {
 		x += int(points[i])
 		y += int(points[i+1])
 	}
-	return x / pointLen, y / pointLen, nil
+	return x / (pointLen / 2), y / (pointLen / 2), nil
 }

@@ -55,6 +55,14 @@ func (auto *AutoGcd) Start() error {
 	return nil
 }
 
+func (auto *AutoGcd) Shutdown() {
+	auto.tabLock.Lock()
+	for _, tab := range auto.tabs {
+		auto.debugger.CloseTab(tab.ChromeTarget)
+	}
+	auto.tabLock.Unlock()
+}
+
 // Returns the first "visual" tab.
 func (auto *AutoGcd) GetTab() (*Tab, error) {
 	auto.tabLock.RLock()

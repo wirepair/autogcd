@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Clickjack + XSS</title>
+<script>
+window.addEventListener('load', function() {
+	var blah = document.createElement("div");
+	blah.innerHTML = "HELLLOOOO";
+	document.getElementById('output').appendChild(blah);
+
+});
+</script>
+</head>
+<body>
+	<iframe id="inner" src="index.html"></iframe>
+	<div id="output">blerp</div>
+<!-- <iframe id="inner" src="http://search.microsoft.com/en-US/search.aspx?q=%22]);alert(1);([%22" width="500" height="2000" scrolling="no" frameborder="none"> -->
+</iframe>
+</body>
+</html>
