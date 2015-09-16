@@ -1,7 +1,7 @@
 package autogcd
 
 import (
-	"github.com/wirepair/gcd/gcdprotogen/types"
+	"github.com/wirepair/gcd/gcdapi"
 	"sync"
 	"testing"
 	"time"
@@ -68,7 +68,7 @@ func TestElementClick(t *testing.T) {
 		t.Fatalf("error clicking button: %s\n", err)
 	}
 
-	msgHandler := func(callerTab *Tab, message *types.ChromeConsoleConsoleMessage) {
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Log("Got message %v\n", message)
 		if message.Text == "button clicked" {
 			callerTab.StopConsoleMessages()
@@ -181,11 +181,23 @@ func TestElementSendKeys(t *testing.T) {
 	var ele *Element
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 
 	tab, err := testAuto.GetTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		t.Logf("got message: %v\n", message)
+		if message.Text == "enter pressed" {
+			callerTab.StopConsoleMessages()
+			wg.Done()
+		}
+
+	}
+	tab.GetConsoleMessages(msgHandler)
 
 	_, err = tab.Navigate(testServerAddr + "input.html")
 	if err != nil {
@@ -197,9 +209,9 @@ func TestElementSendKeys(t *testing.T) {
 		t.Fatalf("error finding input attr: %s\n", err)
 	}
 
-	err = ele.SendKeys("zomgs test")
+	err = ele.SendKeys("zomgs test\n", false)
 	if err != nil {
 		t.Fatalf("error sending keys: %s\n", err)
 	}
-	time.Sleep(time.Second * 5)
+	wg.Wait()
 }

@@ -1,7 +1,7 @@
 package autogcd
 
 import (
-	"github.com/wirepair/gcd/gcdprotogen/types"
+	"github.com/wirepair/gcd/gcdapi"
 	"sync"
 	"testing"
 	"time"
@@ -32,7 +32,7 @@ func TestTabGetConsoleMessage(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	msgHandler := func(callerTab *Tab, message *types.ChromeConsoleConsoleMessage) {
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Logf("got message: %v\n", message)
 		callerTab.StopConsoleMessages()
 		wg.Done()

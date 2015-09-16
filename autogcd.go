@@ -30,10 +30,6 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 		auto.debugger.SetTimeout(settings.timeout)
 	}
 
-	if settings.chromeHost != "" {
-		auto.debugger.SetHost(settings.chromeHost)
-	}
-
 	return auto
 }
 

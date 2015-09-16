@@ -5,11 +5,17 @@
 <title>input test</title>
 <script>
 window.addEventListener('load', function() {
+	var field = document.getElementById('attr');
+	field.addEventListener('enter', function(evt) {
+		evt.preventDefault();
+		console.log('enter pressed');
+		return false;
+	}, false);
 });
 </script>
 </head>
 <body>
-	<form>
+	<form onsubmit="false">
 		<input id="attr" type="text" name="attrtest"></input>
 	</form>
 </body>

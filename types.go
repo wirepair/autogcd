@@ -1,7 +1,7 @@
 package autogcd
 
 import (
-	"github.com/wirepair/gcd/gcdprotogen/types"
+	"github.com/wirepair/gcd/gcdapi"
 )
 
 type PageLoadEventFired struct {
@@ -14,5 +14,5 @@ type ConsoleEventHeader struct {
 }
 
 type ConsoleEventParams struct {
-	Message *types.ChromeConsoleConsoleMessage `json:"message"`
+	Message *gcdapi.ConsoleConsoleMessage `json:"message"`
 }

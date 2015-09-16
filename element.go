@@ -1,7 +1,7 @@
 package autogcd
 
 import (
-	"github.com/wirepair/gcd/gcdprotogen/types"
+//"github.com/wirepair/gcd"
 )
 
 type InvalidDimensionsErr struct {
@@ -13,22 +13,21 @@ func (e *InvalidDimensionsErr) Error() string {
 }
 
 type Element struct {
-	tab *Tab                   // reference to the containing tab
-	id  *types.ChromeDOMNodeId // nodeId in chrome
+	tab *Tab // reference to the containing tab
+	id  int  // nodeId in chrome
 }
 
 func newElement(tab *Tab, id int) *Element {
-	nodeId := types.ChromeDOMNodeId(id)
 	e := &Element{}
 	e.tab = tab
-	e.id = &nodeId
+	e.id = id
 	return e
 }
 
 // Get attributes of the node in sequential name,value pairs in the slice.
 func (e *Element) GetAttributes() (map[string]string, error) {
 	attributes := make(map[string]string)
-	attr, err := e.tab.DOM().GetAttributes(e.id)
+	attr, err := e.tab.DOM.GetAttributes(e.id)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +38,7 @@ func (e *Element) GetAttributes() (map[string]string, error) {
 }
 
 func (e *Element) GetSource() (string, error) {
-	return e.tab.DOM().GetOuterHTML(e.id)
+	return e.tab.DOM.GetOuterHTML(e.id)
 }
 
 // Clicks the element in the center of the element.
@@ -60,7 +59,9 @@ func (e *Element) Click() error {
 	return e.tab.Click(x, y)
 }
 
-func (e *Element) SendKeys(text string) error {
+// SendKeys - sends each individual character after focusing (clicking) on the element.
+// if enter is true, send the enter key upon completion.
+func (e *Element) SendKeys(text string, enter bool) error {
 	//type ( enumerated string [ "char" , "keyDown" , "keyUp" , "rawKeyDown" ] )
 	err := e.Click()
 	if err != nil {
@@ -78,17 +79,29 @@ func (e *Element) SendKeys(text string) error {
 	autoRepeat := false
 	isKeypad := false
 	isSystemKey := false
-	_, err = e.tab.Input().DispatchKeyEvent(theType, modifiers, timestamp, text, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+	for _, inputchar := range text {
+		_, err = e.tab.Input.DispatchKeyEvent(theType, modifiers, timestamp, string(inputchar), unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+		if err != nil {
+			return err
+		}
+	}
+	// this._target.inputAgent().dispatchKeyEvent(type, this._modifiersForEvent(event), event.timeStamp / 1000, text, text ? text.toLowerCase() : undefined, event.keyIdentifier, event.code, event.keyCode /* windowsVirtualKeyCode */, event.keyCode /* nativeVirtualKeyCode */, false, false, false);
+	// press enter
+	//http://plnkr.co/edit/UrOCRgoHB6s6JC9aEnjL?p=preview
+	if enter {
+		_, err = e.tab.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, "", unmodifiedText, "U+000D", "", "U+000D", 13, 13, autoRepeat, isKeypad, isSystemKey)
+		//_, err = e.tab.Input.DispatchKeyEvent("keyUp", modifiers, timestamp, "", unmodifiedText, "U+000D", "Enter", "Enter", 13, 13, autoRepeat, isKeypad, isSystemKey)
+	}
 	return err
 }
 
 func (e *Element) Dimensions() ([]float64, error) {
 	var points []float64
-	box, err := e.tab.DOM().GetBoxModel(e.id)
+	box, err := e.tab.DOM.GetBoxModel(e.id)
 	if err != nil {
 		return nil, err
 	}
-	points = *box.Content
+	points = box.Content
 	return points, nil
 }
 

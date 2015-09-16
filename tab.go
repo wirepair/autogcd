@@ -3,7 +3,7 @@ package autogcd
 import (
 	"encoding/json"
 	"github.com/wirepair/gcd"
-	"github.com/wirepair/gcd/gcdprotogen/types"
+	"github.com/wirepair/gcd/gcdapi"
 	//"log"
 )
 
@@ -17,7 +17,7 @@ func (e *InvalidTabErr) Error() string {
 
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
-type ConsoleMessageFunc func(tab *Tab, message *types.ChromeConsoleConsoleMessage)
+type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
 
 type Tab struct {
 	*gcd.ChromeTarget
@@ -25,9 +25,9 @@ type Tab struct {
 
 func NewTab(target *gcd.ChromeTarget) *Tab {
 	t := &Tab{ChromeTarget: target}
-	t.Page().Enable()
-	t.DOM().Enable()
-	t.Console().Enable()
+	t.Page.Enable()
+	t.DOM.Enable()
+	t.Console.Enable()
 	return t
 }
 
@@ -36,12 +36,12 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 func (t *Tab) Navigate(url string) (string, error) {
 	resp := make(chan int, 1)
 	t.Subscribe("Page.loadEventFired", t.defaultLoadFired(resp))
-	frameId, err := t.Page().Navigate(url)
+	frameId, err := t.Page.Navigate(url)
 	if err != nil {
 		return "", err
 	}
 	<-resp
-	return string(*frameId), nil
+	return string(frameId), nil
 }
 
 // Registers chrome to start retrieving console messages, caller must pass in a channel
@@ -58,13 +58,13 @@ func (t *Tab) StopConsoleMessages() {
 
 // Returns the top window documents source, as visible
 func (t *Tab) GetPageSource() (string, error) {
-	var node *types.ChromeDOMNode
+	var node *gcdapi.DOMNode
 	var err error
-	node, err = t.DOM().GetDocument()
+	node, err = t.DOM.GetDocument()
 	if err != nil {
 		return "", err
 	}
-	return t.DOM().GetOuterHTML(node.NodeId)
+	return t.DOM.GetOuterHTML(node.NodeId)
 }
 
 // Get all Elements that match a selector from the top level document
@@ -82,26 +82,26 @@ func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
 
 // Returns chrome nodeIds from the top level document.
 func (t *Tab) GetNodeIdsBySelector(selector string) ([]int, error) {
-	docNode, err := t.DOM().GetDocument()
+	docNode, err := t.DOM.GetDocument()
 	if err != nil {
 		return nil, err
 	}
 
-	nodeIds, errQuery := t.DOM().QuerySelectorAll(docNode.NodeId, selector)
+	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.NodeId, selector)
 	if errQuery != nil {
 		return nil, errQuery
 	}
 
 	nodes := make([]int, len(nodeIds))
 	for k, v := range nodeIds {
-		nodes[k] = int(*v)
+		nodes[k] = v
 	}
 	return nodes, nil
 }
 
 // Gets all frame ids and urls from the top level document.
 func (t *Tab) GetFrameResources() (map[string]string, error) {
-	resources, err := t.Page().GetResourceTree()
+	resources, err := t.Page.GetResourceTree()
 	if err != nil {
 		return nil, err
 	}
@@ -115,14 +115,12 @@ func (t *Tab) GetFrameResources() (map[string]string, error) {
 // it does not appear possible to get a serialized version using chrome debugger.
 // One could extract the urls and load them into a separate tab however.
 func (t *Tab) GetFrameSource(id, url string) (string, bool, error) {
-	nodeId := types.ChromePageFrameId(id)
-	return t.Page().GetResourceContent(&nodeId, url)
+	return t.Page.GetResourceContent(id, url)
 }
 
 // Returns the outer HTML of the node
 func (t *Tab) GetElementSource(id int) (string, error) {
-	nodeId := types.ChromeDOMNodeId(id)
-	return t.DOM().GetOuterHTML(&nodeId)
+	return t.DOM.GetOuterHTML(id)
 }
 
 // Issues a left button mousePressed then mouseReleased on the x, y coords provided.
@@ -136,11 +134,11 @@ func (t *Tab) Click(x, y int) error {
 	button := "left"
 	clickCount := 1
 
-	if _, err := t.Input().DispatchMouseEvent(pressed, x, y, modifiers, timestamp, button, clickCount); err != nil {
+	if _, err := t.Input.DispatchMouseEvent(pressed, x, y, modifiers, timestamp, button, clickCount); err != nil {
 		return err
 	}
 
-	if _, err := t.Input().DispatchMouseEvent(released, x, y, modifiers, timestamp, button, clickCount); err != nil {
+	if _, err := t.Input.DispatchMouseEvent(released, x, y, modifiers, timestamp, button, clickCount); err != nil {
 		return err
 	}
 	return nil
@@ -152,26 +150,26 @@ func (t *Tab) GetElementByNodeId(id int) (*Element, error) {
 
 func (t *Tab) GetElementById(attributeId string) (*Element, error) {
 	var err error
-	var nodeId *types.ChromeDOMNodeId
-	var doc *types.ChromeDOMNode
+	var nodeId int
+	var doc *gcdapi.DOMNode
 	selector := "#" + attributeId
-	doc, err = t.DOM().GetDocument()
+	doc, err = t.DOM.GetDocument()
 	if err != nil {
 		return nil, err
 	}
 
-	nodeId, err = t.DOM().QuerySelector(doc.NodeId, selector)
+	nodeId, err = t.DOM.QuerySelector(doc.NodeId, selector)
 	if err != nil {
 		return nil, err
 	}
 
-	return newElement(t, int(*nodeId)), err
+	return newElement(t, nodeId), err
 }
 
 //
 func (t *Tab) defaultConsoleMessageAdded(fn ConsoleMessageFunc) GcdResponseFunc {
 	return func(target *gcd.ChromeTarget, payload []byte) {
-		message := &types.ChromeConsoleConsoleMessage{}
+		message := &gcdapi.ConsoleConsoleMessage{}
 		consoleMessage := &ConsoleEventHeader{}
 		err := json.Unmarshal(payload, consoleMessage)
 		if err == nil {
@@ -184,6 +182,7 @@ func (t *Tab) defaultConsoleMessageAdded(fn ConsoleMessageFunc) GcdResponseFunc 
 
 func (t *Tab) defaultLoadFired(resp chan<- int) GcdResponseFunc {
 	return func(target *gcd.ChromeTarget, payload []byte) {
+		target.Unsubscribe("Page.loadEventFired")
 		fired := &PageLoadEventFired{}
 		err := json.Unmarshal(payload, fired)
 		if err != nil {
@@ -194,7 +193,7 @@ func (t *Tab) defaultLoadFired(resp chan<- int) GcdResponseFunc {
 	}
 }
 
-func recursivelyGetFrameResource(resourceMap map[string]string, resource *types.ChromePageFrameResourceTree) {
+func recursivelyGetFrameResource(resourceMap map[string]string, resource *gcdapi.PageFrameResourceTree) {
 	for _, frame := range resource.ChildFrames {
 		resourceMap[frame.Frame.Id] = frame.Frame.Url
 		recursivelyGetFrameResource(resourceMap, frame)

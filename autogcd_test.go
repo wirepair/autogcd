@@ -3,6 +3,7 @@ package autogcd
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -36,7 +37,7 @@ func testCleanUp() {
 }
 
 func TestStart(t *testing.T) {
-	s := NewSettings(testPath, testDir)
+	s := NewSettings(testPath, testRandomDir(t))
 	s.SetStartTimeout(15)
 	s.SetChromeHost("localhost")
 	auto := NewAutoGcd(s)
@@ -109,7 +110,8 @@ func TestCloseTab(t *testing.T) {
 }
 
 func testDefaultStartup(t *testing.T) *AutoGcd {
-	s := NewSettings(testPath, testDir)
+	s := NewSettings(testPath, testRandomDir(t))
+	s.AddStartupFlags([]string{"--disable-new-tab-first-run", "--no-first-run"})
 	s.SetDebuggerPort(testRandomPort(t))
 	auto := NewAutoGcd(s)
 	if err := auto.Start(); err != nil {
@@ -133,4 +135,12 @@ func testRandomPort(t *testing.T) string {
 	_, randPort, _ := net.SplitHostPort(l.Addr().String())
 	l.Close()
 	return randPort
+}
+
+func testRandomDir(t *testing.T) string {
+	dir, err := ioutil.TempDir(testDir, "autogcd")
+	if err != nil {
+		t.Fatalf("error getting temp dir: %s\n", err)
+	}
+	return dir
 }
