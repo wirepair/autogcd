@@ -1,7 +1,7 @@
 package autogcd
 
 import (
-//"github.com/wirepair/gcd"
+	"github.com/wirepair/gcd/gcdapi"
 )
 
 type InvalidDimensionsErr struct {
@@ -13,21 +13,23 @@ func (e *InvalidDimensionsErr) Error() string {
 }
 
 type Element struct {
-	tab *Tab // reference to the containing tab
-	id  int  // nodeId in chrome
+	tab  *Tab            // reference to the containing tab
+	Node *gcdapi.DOMNode // the dom node, taken from the document
+	Id   int             // nodeId in chrome
 }
 
-func newElement(tab *Tab, id int) *Element {
+func newElement(tab *Tab, node *gcdapi.DOMNode) *Element {
 	e := &Element{}
 	e.tab = tab
-	e.id = id
+	e.Node = node
+	e.Id = node.NodeId
 	return e
 }
 
 // Get attributes of the node in sequential name,value pairs in the slice.
 func (e *Element) GetAttributes() (map[string]string, error) {
 	attributes := make(map[string]string)
-	attr, err := e.tab.DOM.GetAttributes(e.id)
+	attr, err := e.tab.DOM.GetAttributes(e.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +39,22 @@ func (e *Element) GetAttributes() (map[string]string, error) {
 	return attributes, nil
 }
 
+// Works like WebDriver's clear(), simply sets the attribute value for input.
+// or clears the value for textarea.
+func (e *Element) Clear() error {
+	var err error
+	if e.Node.NodeName == "textarea" {
+		_, err = e.tab.DOM.SetNodeValue(e.Id, "")
+	}
+	if e.Node.NodeName == "input" {
+		_, err = e.tab.DOM.SetAttributeValue(e.Id, "value", "")
+	}
+	return err
+}
+
+// Returns the outer html of the element.
 func (e *Element) GetSource() (string, error) {
-	return e.tab.DOM.GetOuterHTML(e.id)
+	return e.tab.DOM.GetOuterHTML(e.Id)
 }
 
 // Clicks the element in the center of the element.
@@ -60,9 +76,8 @@ func (e *Element) Click() error {
 }
 
 // SendKeys - sends each individual character after focusing (clicking) on the element.
-// if enter is true, send the enter key upon completion.
-func (e *Element) SendKeys(text string, enter bool) error {
-	//type ( enumerated string [ "char" , "keyDown" , "keyUp" , "rawKeyDown" ] )
+// Extremely basic, doesn't take into account most/all system keys except enter.
+func (e *Element) SendKeys(text string) error {
 	err := e.Click()
 	if err != nil {
 		return err
@@ -79,25 +94,62 @@ func (e *Element) SendKeys(text string, enter bool) error {
 	autoRepeat := false
 	isKeypad := false
 	isSystemKey := false
+
+	// loop over input, looking for system keys and handling them
 	for _, inputchar := range text {
-		_, err = e.tab.Input.DispatchKeyEvent(theType, modifiers, timestamp, string(inputchar), unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+		input := string(inputchar)
+
+		// check system keys
+		switch input {
+		case "\r", "\n", "\t", "\b":
+			if err := e.pressSystemKey(input); err != nil {
+				return err
+			}
+			continue
+		}
+		_, err = e.tab.Input.DispatchKeyEvent(theType, modifiers, timestamp, input, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
 		if err != nil {
 			return err
 		}
 	}
-	// this._target.inputAgent().dispatchKeyEvent(type, this._modifiersForEvent(event), event.timeStamp / 1000, text, text ? text.toLowerCase() : undefined, event.keyIdentifier, event.code, event.keyCode /* windowsVirtualKeyCode */, event.keyCode /* nativeVirtualKeyCode */, false, false, false);
-	// press enter
-	//http://plnkr.co/edit/UrOCRgoHB6s6JC9aEnjL?p=preview
-	if enter {
-		_, err = e.tab.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, "", unmodifiedText, "U+000D", "", "U+000D", 13, 13, autoRepeat, isKeypad, isSystemKey)
-		//_, err = e.tab.Input.DispatchKeyEvent("keyUp", modifiers, timestamp, "", unmodifiedText, "U+000D", "Enter", "Enter", 13, 13, autoRepeat, isKeypad, isSystemKey)
-	}
 	return err
+}
+
+// Super ghetto, i know.
+func (e *Element) pressSystemKey(systemKey string) error {
+	systemKeyCode := 0
+	keyIdentifier := ""
+	switch systemKey {
+	case "\b":
+		keyIdentifier = "Backspace"
+		systemKeyCode = 8
+	case "\t":
+		keyIdentifier = "Tab"
+		systemKeyCode = 9
+	case "\r", "\n":
+		systemKey = "\r"
+		keyIdentifier = "Enter"
+		systemKeyCode = 13
+	}
+
+	modifiers := 0
+	timestamp := 0.0
+	unmodifiedText := ""
+	autoRepeat := false
+	isKeypad := false
+	isSystemKey := false
+	if _, err := e.tab.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, systemKey, systemKey, keyIdentifier, keyIdentifier, "", systemKeyCode, systemKeyCode, autoRepeat, isKeypad, isSystemKey); err != nil {
+		return err
+	}
+	if _, err := e.tab.Input.DispatchKeyEvent("char", modifiers, timestamp, systemKey, unmodifiedText, "", "", "", 0, 0, autoRepeat, isKeypad, isSystemKey); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (e *Element) Dimensions() ([]float64, error) {
 	var points []float64
-	box, err := e.tab.DOM.GetBoxModel(e.id)
+	box, err := e.tab.DOM.GetBoxModel(e.Id)
 	if err != nil {
 		return nil, err
 	}

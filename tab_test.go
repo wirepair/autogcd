@@ -57,6 +57,34 @@ func TestTabGetConsoleMessage(t *testing.T) {
 
 }
 
+func TestTabGetDocument(t *testing.T) {
+	var doc *gcdapi.DOMNode
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, err = tab.Navigate(testServerAddr + "attributes.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	doc, err = tab.GetDocument()
+	if err != nil {
+		t.Fatalf("error getting doc: %s\n", err)
+	}
+	testPrintNodes(t, doc)
+}
+
+func testPrintNodes(t *testing.T, node *gcdapi.DOMNode) {
+	for _, childNode := range node.Children {
+		t.Logf("%#v\n\n", childNode)
+		testPrintNodes(t, childNode)
+	}
+}
+
 func TestTabGetPageSource(t *testing.T) {
 	var src string
 	testAuto := testDefaultStartup(t)

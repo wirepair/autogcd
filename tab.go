@@ -4,9 +4,20 @@ import (
 	"encoding/json"
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
-	//"log"
+	"log"
+	"sync"
 )
 
+// when we are unable to find an element/nodeId
+type ElementNotFoundErr struct {
+	Message string
+}
+
+func (e *ElementNotFoundErr) Error() string {
+	return "Unable to find element: " + e.Message
+}
+
+// when we are unable to access a tab
 type InvalidTabErr struct {
 	Message string
 }
@@ -21,14 +32,62 @@ type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
 
 type Tab struct {
 	*gcd.ChromeTarget
+	eleMutex *sync.Mutex
+	Elements map[int]*Element
 }
 
 func NewTab(target *gcd.ChromeTarget) *Tab {
 	t := &Tab{ChromeTarget: target}
+	t.eleMutex = &sync.Mutex{}
+	t.Elements = make(map[int]*Element)
 	t.Page.Enable()
 	t.DOM.Enable()
 	t.Console.Enable()
 	return t
+}
+
+func (t *Tab) ListenNodeChanges() {
+	// new nodes
+	t.Subscribe("DOM.setChildNodes", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("SETNODE EVENT: %s\n", string(payload))
+		message := &gcdapi.DOMSetChildNodesEvent{}
+		header := &DefaultEventHeader{}
+		err := json.Unmarshal(payload, header)
+		if err == nil {
+			message = header.Params.(*gcdapi.DOMSetChildNodesEvent)
+			log.Printf("Got Message: %s\n", message)
+		}
+
+	})
+
+	t.Subscribe("DOM.attributeModifiedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("attributeModifiedEvent EVENT: %s\n", string(payload))
+	})
+	t.Subscribe("DOM.attributeRemovedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("attributeRemovedEvent EVENT: %s\n", string(payload))
+	})
+	t.Subscribe("DOM.characterDataModifiedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("characterDataModifiedEvent EVENT: %s\n", string(payload))
+	})
+	t.Subscribe("DOM.childNodeCountUpdatedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("childNodeCountUpdatedEvent EVENT: %s\n", string(payload))
+	})
+	t.Subscribe("DOM.childNodeInsertedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("childNodeInsertedEvent EVENT: %s\n", string(payload))
+	})
+	t.Subscribe("DOM.childNodeRemovedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("childNodeRemovedEvent EVENT: %s\n", string(payload))
+	})
+	t.Subscribe("DOM.inlineStyleInvalidatedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("inlineStyleInvalidatedEvent EVENT: %s\n", string(payload))
+	})
+	// node ids are no longer valid
+	t.Subscribe("DOM.documentUpdated", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("documentUpdated, deleting all nodes")
+		t.eleMutex.Lock()
+		t.Elements = make(map[int]*Element)
+		t.eleMutex.Unlock()
+	})
 }
 
 // Navigates to a URL and does not return until the Page.loadEventFired event.
@@ -36,17 +95,17 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 func (t *Tab) Navigate(url string) (string, error) {
 	resp := make(chan int, 1)
 	t.Subscribe("Page.loadEventFired", t.defaultLoadFired(resp))
+
 	frameId, err := t.Page.Navigate(url)
 	if err != nil {
 		return "", err
 	}
 	<-resp
-	return string(frameId), nil
+	return frameId, nil
 }
 
-// Registers chrome to start retrieving console messages, caller must pass in a channel
-// to get notified when events come in. Caller should call StopConsoleMessages and close
-// the channel.
+// Registers chrome to start retrieving console messages, caller must pass in call back
+// function to handle it.
 func (t *Tab) GetConsoleMessages(messageHandler ConsoleMessageFunc) {
 	t.Subscribe("Console.messageAdded", t.defaultConsoleMessageAdded(messageHandler))
 }
@@ -69,19 +128,7 @@ func (t *Tab) GetPageSource() (string, error) {
 
 // Get all Elements that match a selector from the top level document
 func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
-	nodeIds, err := t.GetNodeIdsBySelector(selector)
-	if err != nil {
-		return nil, err
-	}
-	elements := make([]*Element, len(nodeIds))
-	for i := 0; i < len(nodeIds); i++ {
-		elements[i] = newElement(t, nodeIds[i])
-	}
-	return elements, nil
-}
-
-// Returns chrome nodeIds from the top level document.
-func (t *Tab) GetNodeIdsBySelector(selector string) ([]int, error) {
+	// get document
 	docNode, err := t.DOM.GetDocument()
 	if err != nil {
 		return nil, err
@@ -92,11 +139,20 @@ func (t *Tab) GetNodeIdsBySelector(selector string) ([]int, error) {
 		return nil, errQuery
 	}
 
-	nodes := make([]int, len(nodeIds))
-	for k, v := range nodeIds {
-		nodes[k] = v
+	elements := make([]*Element, len(nodeIds))
+	domMap := t.domNodesFromIds(docNode, nodeIds)
+	for k, nodeId := range nodeIds {
+		elements[k] = newElement(t, domMap[nodeId])
 	}
-	return nodes, nil
+	return elements, nil
+}
+
+func (t *Tab) GetDocument() (*gcdapi.DOMNode, error) {
+	_, err := t.DOM.RequestChildNodes(0, -1)
+	if err != nil {
+		return nil, err
+	}
+	return t.DOM.GetDocument()
 }
 
 // Gets all frame ids and urls from the top level document.
@@ -145,9 +201,15 @@ func (t *Tab) Click(x, y int) error {
 }
 
 func (t *Tab) GetElementByNodeId(id int) (*Element, error) {
-	return newElement(t, id), nil
+	domNode, err := t.domNodeFromId(id)
+	if err != nil {
+		return nil, err
+	}
+	return newElement(t, domNode), nil
 }
 
+// Returns the element by searching the top level document for an element with attributeId
+// Does not work on frames.
 func (t *Tab) GetElementById(attributeId string) (*Element, error) {
 	var err error
 	var nodeId int
@@ -163,7 +225,52 @@ func (t *Tab) GetElementById(attributeId string) (*Element, error) {
 		return nil, err
 	}
 
-	return newElement(t, nodeId), err
+	domNode, err := t.findDomNodeInDoc(doc, nodeId)
+	if err != nil {
+		return nil, err
+	}
+	return newElement(t, domNode), err
+}
+
+func (t *Tab) domNodeFromId(nodeId int) (*gcdapi.DOMNode, error) {
+	doc, err := t.DOM.GetDocument()
+	if err != nil {
+		return nil, err
+	}
+
+	return t.findDomNodeInDoc(doc, nodeId)
+}
+
+func (t *Tab) findDomNodeInDoc(doc *gcdapi.DOMNode, nodeId int) (*gcdapi.DOMNode, error) {
+	// they requested the document
+	if nodeId == doc.NodeId {
+		return doc, nil
+	}
+	// requested a child node
+	for _, childNode := range doc.Children {
+		log.Printf("nodeId: %d childNodeId: %d\n", nodeId, childNode.NodeId)
+
+		if childNode.NodeId == nodeId {
+			return childNode, nil
+		}
+		// recursively check children nodes.
+		return t.findDomNodeInDoc(childNode, nodeId)
+	}
+	return nil, &ElementNotFoundErr{"nodeid doesn't exist"}
+}
+
+// loop over child nodes looking for nodeIds
+func (t *Tab) domNodesFromIds(doc *gcdapi.DOMNode, nodeIds []int) map[int]*gcdapi.DOMNode {
+	domMap := make(map[int]*gcdapi.DOMNode, len(nodeIds))
+
+	for _, childNode := range doc.Children {
+		for _, nodeId := range nodeIds {
+			if childNode.NodeId == nodeId {
+				domMap[nodeId] = childNode
+			}
+		}
+	}
+	return domMap
 }
 
 //

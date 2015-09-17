@@ -16,3 +16,8 @@ type ConsoleEventHeader struct {
 type ConsoleEventParams struct {
 	Message *gcdapi.ConsoleConsoleMessage `json:"message"`
 }
+
+type DefaultEventHeader struct {
+	Method string      `json:"method"`
+	Params interface{} `json:"params"`
+}

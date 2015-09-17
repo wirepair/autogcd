@@ -191,7 +191,7 @@ func TestElementSendKeys(t *testing.T) {
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Logf("got message: %v\n", message)
-		if message.Text == "enter pressed" {
+		if message.Text == "zomgs Test!" {
 			callerTab.StopConsoleMessages()
 			wg.Done()
 		}
@@ -209,7 +209,7 @@ func TestElementSendKeys(t *testing.T) {
 		t.Fatalf("error finding input attr: %s\n", err)
 	}
 
-	err = ele.SendKeys("zomgs test\n", false)
+	err = ele.SendKeys("zomgs Test!\n")
 	if err != nil {
 		t.Fatalf("error sending keys: %s\n", err)
 	}
