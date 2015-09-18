@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>event listeners</title>
+<script>
+function f() {
+	console.log('about:blank loaded');
+}
+
+window.addEventListener('load', function() {
+	var buttz = document.getElementById("button");
+	buttz.addEventListener('click', function() {
+		console.log('button clicked');
+	});
+
+	var divvie = document.getElementById('divvie');
+	divvie.addEventListener('mouseover', function() {
+		console.log('you moused over');
+	});
+
+});
+</script>
+</head>
+<body>
+	<div id='divvie'>button click</div>
+	<button id="button">blarg</button>
+	<iframe src="about:blank" onload="f();"></iframe>
+</body>
+</html>

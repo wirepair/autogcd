@@ -53,7 +53,6 @@ func TestElementClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-
 	buttons, err = tab.GetElementsBySelector("button")
 	if err != nil {
 		t.Fatalf("error finding buttons: %s\n", err)
@@ -121,7 +120,6 @@ func TestElementGetSource(t *testing.T) {
 	if src != "<button id=\"button\"></button>" {
 		t.Fatalf("expected <button id=\"button\"></button> but got: %s\n", src)
 	}
-
 }
 
 func TestElementGetAttributes(t *testing.T) {
@@ -141,9 +139,9 @@ func TestElementGetAttributes(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	ele, err = tab.GetElementById("attr")
+	ele, _, err = tab.GetElementById("attr")
 	if err != nil {
-		t.Fatalf("error finding input: %s\n", err)
+		t.Fatalf("error finding input: %s %#v\n", err, ele)
 	}
 
 	attrs, err = ele.GetAttributes()
@@ -204,7 +202,7 @@ func TestElementSendKeys(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	ele, err = tab.GetElementById("attr")
+	ele, _, err = tab.GetElementById("attr")
 	if err != nil {
 		t.Fatalf("error finding input attr: %s\n", err)
 	}
@@ -214,4 +212,67 @@ func TestElementSendKeys(t *testing.T) {
 		t.Fatalf("error sending keys: %s\n", err)
 	}
 	wg.Wait()
+}
+
+func TestElementGetTag(t *testing.T) {
+	var err error
+	var ele *Element
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	_, err = tab.Navigate(testServerAddr + "attributes.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	ele, _, err = tab.GetElementById("attr")
+	if err != nil {
+		t.Fatalf("error finding input: %s %#v\n", err, ele)
+	}
+
+	ele.WaitForReady()
+	tagName, err := ele.GetTagName()
+	if err != nil {
+		t.Fatalf("Error getting tagname!")
+	}
+	t.Logf("ele ready: tagname: " + tagName)
+	if tagName != "input" {
+		t.Fatalf("Error expected tagname to be input got: %s\n", tagName)
+	}
+}
+
+func TestElementGetEventListeners(t *testing.T) {
+	var err error
+	var ele *Element
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	_, err = tab.Navigate(testServerAddr + "events.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	ele, _, err = tab.GetElementById("divvie")
+	if err != nil {
+		t.Fatalf("error finding input: %s %#v\n", err, ele)
+	}
+	ele.WaitForReady()
+	listeners, err := ele.GetEventListeners()
+	for _, listener := range listeners {
+		t.Logf("%#v\n", listener)
+		src, err := tab.GetScriptSource(listener.Location.ScriptId)
+		if err != nil {
+			t.Fatalf("error getting source: %s\n", err)
+		}
+		t.Logf("script source: %s\n", src)
+	}
 }
