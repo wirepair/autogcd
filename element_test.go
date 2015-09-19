@@ -276,3 +276,26 @@ func TestElementGetEventListeners(t *testing.T) {
 		t.Logf("script source: %s\n", src)
 	}
 }
+
+func TestGoogleSearch(t *testing.T) {
+	var err error
+	var ele *Element
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	_, err = tab.Navigate("https://www.google.com")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	ele, _, err = tab.GetElementById("lst-ib")
+	if err != nil {
+		t.Fatalf("error finding input: %s %#v\n", err, ele)
+	}
+	ele.SendKeys("gcd\n")
+	time.Sleep(5 * time.Second)
+}

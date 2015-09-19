@@ -1,12 +1,18 @@
 package autogcd
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
 	"log"
 	"sync"
+	"time"
 )
+
+// A function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
+// Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
+type PromptHandler func(tab *Tab, message, promptType string)
 
 // when we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
@@ -26,15 +32,24 @@ func (e *InvalidTabErr) Error() string {
 	return "Unable to access tab: " + e.Message
 }
 
+type NavigationTimeoutErr struct {
+	Message string
+}
+
+func (e *NavigationTimeoutErr) Error() string {
+	return "Timed out attempting to navigate to: " + e.Message
+}
+
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
 type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
 
 type Tab struct {
 	*gcd.ChromeTarget
-	eleMutex   *sync.RWMutex
-	Elements   map[int]*Element
-	nodeChange chan *NodeChangeEvent
+	eleMutex          *sync.RWMutex
+	Elements          map[int]*Element
+	nodeChange        chan *NodeChangeEvent
+	navigationTimeout time.Duration
 }
 
 func NewTab(target *gcd.ChromeTarget) *Tab {
@@ -42,6 +57,7 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.eleMutex = &sync.RWMutex{}
 	t.Elements = make(map[int]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
+	t.navigationTimeout = 30 // default 30 seconds for timeout
 	t.Page.Enable()
 	t.DOM.Enable()
 	t.Console.Enable()
@@ -51,107 +67,35 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	return t
 }
 
-func (t *Tab) subscribeNodeChanges() {
-	// see tab_subscribers
-	t.subscribeSetChildNodes()
-	t.subscribeAttributeModified()
-	t.subscribeAttributeRemoved()
-	t.subscribeCharacterDataModified()
-	t.subscribeChildNodeCountUpdated()
-	t.subscribeChildNodeInserted()
-	t.subscribeChildNodeRemoved()
-	// This doesn't seem useful.
-	// t.subscribeInlineStyleInvalidated()
-	t.subscribeDocumentUpdated()
+func (t *Tab) SetNavigationTimeout(timeout time.Duration) {
+	t.navigationTimeout = timeout
 }
 
-func (t *Tab) listenNodeChanges() {
-	for {
-		select {
-		case nodeChangeEvent := <-t.nodeChange:
-			t.handleNodeChange(nodeChangeEvent)
-		}
+// Navigates to a URL and does not return until the Page.loadEventFired event.
+// Updates the list of elements
+// Returns the frameId of the Tab that this navigation occured on.
+func (t *Tab) Navigate(url string) (string, error) {
+	//var doc *gcdapi.DOMNode
+	resp := make(chan int, 1)
+	t.Subscribe("Page.loadEventFired", t.defaultLoadFired(resp))
+	frameId, err := t.Page.Navigate(url)
+	timeoutTimer := time.NewTimer(t.navigationTimeout * time.Second)
+	if err != nil {
+		return "", err
 	}
-}
-
-func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
-	switch change.EventType {
-	case DocumentUpdatedEvent:
-		log.Println("documentUpdated, deleting all nodes")
-		t.eleMutex.Lock()
-		t.Elements = make(map[int]*Element)
-		t.eleMutex.Unlock()
-	case SetChildNodesEvent:
-		log.Println("SetChildNodesEvent, adding new nodes")
-		t.createNewNodes(change.Nodes)
-	case AttributeModifiedEvent:
-		log.Println("attribute modified")
-		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.updateAttribute(change.Name, change.Value)
-		}
-	case AttributeRemovedEvent:
-		log.Println("attribute removed")
-		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.removeAttribute(change.Name)
-		}
-	case CharacterDataModifiedEvent:
-		log.Println("character data updated")
-		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.updateCharacterData(change.CharacterData)
-		}
-	case ChildNodeCountUpdatedEvent:
-		log.Println("character data updated")
-		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.updateChildNodeCount(change.ChildNodeCount)
-		}
-	case ChildNodeInsertedEvent:
-		log.Println("child node inserted")
-		ele := t.knownElement(change.Node)
-		t.eleMutex.Lock()
-		t.Elements[change.NodeId] = ele
-		t.eleMutex.Unlock()
-	case ChildNodeRemovedEvent:
-		log.Println("child node removed, deleting from list")
-		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.setInvalidated(true)
-		}
-		t.eleMutex.Lock()
-		delete(t.Elements, change.NodeId)
-		t.eleMutex.Unlock()
+	select {
+	case <-resp:
+		timeoutTimer.Stop()
+	case <-timeoutTimer.C:
+		return "", &NavigationTimeoutErr{Message: url}
 	}
-}
-
-// Called if the element is known about but not yet populated. If it is not
-// known, we create a new element. If it is known we populate it and return it.
-func (t *Tab) knownElement(node *gcdapi.DOMNode) *Element {
-	if ele, ok := t.getElement(node.NodeId); ok {
-		ele.populateElement(node)
-		return ele
+	// update the list of elements
+	_, err = t.GetDocument()
+	if err != nil {
+		return "", err
 	}
-	newEle := newReadyElement(t, node)
-	return newEle
-}
-
-// recursively create new elements off nodes and their children
-// Handle known and unknown elements by calling knownElement prior to
-// adding to our list.
-func (t *Tab) createNewNodes(nodes []*gcdapi.DOMNode) {
-	for _, newNode := range nodes {
-		log.Printf("Adding new Node: %s id: %d\n", newNode.NodeName, newNode.NodeId)
-		newEle := t.knownElement(newNode)
-		t.eleMutex.Lock()
-		t.Elements[newNode.NodeId] = newEle
-		t.eleMutex.Unlock()
-		t.createNewNodes(newNode.Children)
-	}
-}
-
-// safely returns the element by looking it up by nodeId
-func (t *Tab) getElement(nodeId int) (*Element, bool) {
-	t.eleMutex.RLock()
-	defer t.eleMutex.RUnlock()
-	ele, ok := t.Elements[nodeId]
-	return ele, ok
+	//_, err = t.DOM.RequestChildNodes(doc.NodeId, -1)
+	return frameId, nil
 }
 
 // Gets the document and updates our list of Elements in the event
@@ -164,37 +108,6 @@ func (t *Tab) GetDocument() (*gcdapi.DOMNode, error) {
 	}
 	t.addDocumentNodes(doc)
 	return doc, nil
-}
-
-// Safely adds the nodes in the document to our list of elements
-func (t *Tab) addDocumentNodes(doc *gcdapi.DOMNode) {
-	newEle := t.knownElement(doc)
-	t.eleMutex.Lock()
-	t.Elements[doc.NodeId] = newEle
-	t.eleMutex.Unlock()
-	t.createNewNodes(doc.Children)
-}
-
-// Navigates to a URL and does not return until the Page.loadEventFired event.
-// Updates the list of elements
-// Returns the frameId of the Tab that this navigation occured on.
-func (t *Tab) Navigate(url string) (string, error) {
-	//var doc *gcdapi.DOMNode
-	resp := make(chan int, 1)
-
-	t.Subscribe("Page.loadEventFired", t.defaultLoadFired(resp))
-	frameId, err := t.Page.Navigate(url)
-	if err != nil {
-		return "", err
-	}
-	<-resp
-	// update the list of elements
-	_, err = t.GetDocument()
-	if err != nil {
-		return "", err
-	}
-	//_, err = t.DOM.RequestChildNodes(doc.NodeId, -1)
-	return frameId, nil
 }
 
 // Registers chrome to start retrieving console messages, caller must pass in call back
@@ -217,6 +130,7 @@ func (t *Tab) GetPageSource() (string, error) {
 	return t.DOM.GetOuterHTML(node.NodeId)
 }
 
+// Returns the source of a script by its scriptId.
 func (t *Tab) GetScriptSource(scriptId string) (string, error) {
 	return t.Debugger.GetScriptSource(scriptId)
 }
@@ -322,6 +236,132 @@ func (t *Tab) Click(x, y int) error {
 	return nil
 }
 
+func (t *Tab) SendKeys(text string) error {
+	theType := "char"
+	modifiers := 0
+	timestamp := 0.0
+	unmodifiedText := ""
+	keyIdentifier := ""
+	code := ""
+	key := ""
+	windowsVirtualKeyCode := 0
+	nativeVirtualKeyCode := 0
+	autoRepeat := false
+	isKeypad := false
+	isSystemKey := false
+
+	// loop over input, looking for system keys and handling them
+	for _, inputchar := range text {
+		input := string(inputchar)
+
+		// check system keys
+		switch input {
+		case "\r", "\n", "\t", "\b":
+			if err := t.pressSystemKey(input); err != nil {
+				return err
+			}
+			continue
+		}
+		_, err := t.Input.DispatchKeyEvent(theType, modifiers, timestamp, input, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Super ghetto, i know.
+func (t *Tab) pressSystemKey(systemKey string) error {
+	systemKeyCode := 0
+	keyIdentifier := ""
+	switch systemKey {
+	case "\b":
+		keyIdentifier = "Backspace"
+		systemKeyCode = 8
+	case "\t":
+		keyIdentifier = "Tab"
+		systemKeyCode = 9
+	case "\r", "\n":
+		systemKey = "\r"
+		keyIdentifier = "Enter"
+		systemKeyCode = 13
+	}
+
+	modifiers := 0
+	timestamp := 0.0
+	unmodifiedText := ""
+	autoRepeat := false
+	isKeypad := false
+	isSystemKey := false
+	if _, err := t.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, systemKey, systemKey, keyIdentifier, keyIdentifier, "", systemKeyCode, systemKeyCode, autoRepeat, isKeypad, isSystemKey); err != nil {
+		return err
+	}
+	if _, err := t.Input.DispatchKeyEvent("char", modifiers, timestamp, systemKey, unmodifiedText, "", "", "", 0, 0, autoRepeat, isKeypad, isSystemKey); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Injects custom javascript prior to the page loading on all frames. Returns an identifier which can be
+// used to remove the script.
+func (t *Tab) InjectScriptOnLoad(scriptSource string) (string, error) {
+	scriptId, err := t.Page.AddScriptToEvaluateOnLoad(scriptSource)
+	if err != nil {
+		return "", err
+	}
+	return scriptId, nil
+}
+
+func (t *Tab) RemoveScriptFromOnLoad(scriptId string) error {
+	_, err := t.Page.RemoveScriptToEvaluateOnLoad(scriptId)
+	return err
+}
+
+// Takes a screenshot of the currently loaded page (only the dimensions visible in browser window)
+func (t *Tab) GetScreenShot() ([]byte, error) {
+	var imgBytes []byte
+	img, err := t.Page.CaptureScreenshot()
+	if err != nil {
+		return nil, err
+	}
+	imgBytes, err = base64.StdEncoding.DecodeString(img)
+	if err != nil {
+		return nil, err
+	}
+	return imgBytes, nil
+}
+
+// Returns the current url of the top level document
+func (t *Tab) GetCurrentUrl() (string, error) {
+	doc, err := t.GetDocument()
+	if err != nil {
+		return "", err
+	}
+	return doc.DocumentURL, nil
+}
+
+// Returns the cookies for the current tab
+func (t *Tab) GetCookies() ([]*gcdapi.NetworkCookie, error) {
+	return t.Page.GetCookies()
+}
+
+// Deletes the cookie from the current tab
+func (t *Tab) DeleteCookie(cookieName, url string) error {
+	_, err := t.Page.DeleteCookie(cookieName, url)
+	return err
+}
+
+func (t *Tab) SetJavaScriptPromptHandler(promptHandlerFn PromptHandler) {
+	t.Subscribe("Page.javascriptDialogOpening", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("Javascript Dialog Opened!: %s\n", string(payload))
+		message := &gcdapi.PageJavascriptDialogOpeningEvent{}
+		if err := json.Unmarshal(payload, message); err == nil {
+			promptHandlerFn(t, message.Params.Message, message.Params.Type)
+		}
+
+	})
+}
+
 // handles console messages coming in, responds by calling call back function
 func (t *Tab) defaultConsoleMessageAdded(fn ConsoleMessageFunc) GcdResponseFunc {
 	return func(target *gcd.ChromeTarget, payload []byte) {
@@ -355,4 +395,116 @@ func recursivelyGetFrameResource(resourceMap map[string]string, resource *gcdapi
 		resourceMap[frame.Frame.Id] = frame.Frame.Url
 		recursivelyGetFrameResource(resourceMap, frame)
 	}
+}
+
+func (t *Tab) subscribeNodeChanges() {
+	// see tab_subscribers
+	t.subscribeSetChildNodes()
+	t.subscribeAttributeModified()
+	t.subscribeAttributeRemoved()
+	t.subscribeCharacterDataModified()
+	t.subscribeChildNodeCountUpdated()
+	t.subscribeChildNodeInserted()
+	t.subscribeChildNodeRemoved()
+	// This doesn't seem useful.
+	// t.subscribeInlineStyleInvalidated()
+	t.subscribeDocumentUpdated()
+}
+
+func (t *Tab) listenNodeChanges() {
+	for {
+		select {
+		case nodeChangeEvent := <-t.nodeChange:
+			t.handleNodeChange(nodeChangeEvent)
+		}
+	}
+}
+
+func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
+	switch change.EventType {
+	case DocumentUpdatedEvent:
+		log.Println("documentUpdated, deleting all nodes")
+		t.eleMutex.Lock()
+		t.Elements = make(map[int]*Element)
+		t.eleMutex.Unlock()
+	case SetChildNodesEvent:
+		log.Println("SetChildNodesEvent, adding new nodes")
+		t.createNewNodes(change.Nodes)
+	case AttributeModifiedEvent:
+		log.Println("attribute modified")
+		if ele, ok := t.getElement(change.NodeId); ok {
+			ele.updateAttribute(change.Name, change.Value)
+		}
+	case AttributeRemovedEvent:
+		log.Println("attribute removed")
+		if ele, ok := t.getElement(change.NodeId); ok {
+			ele.removeAttribute(change.Name)
+		}
+	case CharacterDataModifiedEvent:
+		log.Println("character data updated")
+		if ele, ok := t.getElement(change.NodeId); ok {
+			ele.updateCharacterData(change.CharacterData)
+		}
+	case ChildNodeCountUpdatedEvent:
+		log.Println("character data updated")
+		if ele, ok := t.getElement(change.NodeId); ok {
+			ele.updateChildNodeCount(change.ChildNodeCount)
+		}
+	case ChildNodeInsertedEvent:
+		log.Println("child node inserted")
+		ele := t.knownElement(change.Node)
+		t.eleMutex.Lock()
+		t.Elements[change.NodeId] = ele
+		t.eleMutex.Unlock()
+	case ChildNodeRemovedEvent:
+		log.Println("child node removed, deleting from list")
+		if ele, ok := t.getElement(change.NodeId); ok {
+			ele.setInvalidated(true)
+		}
+		t.eleMutex.Lock()
+		delete(t.Elements, change.NodeId)
+		t.eleMutex.Unlock()
+	}
+}
+
+// Called if the element is known about but not yet populated. If it is not
+// known, we create a new element. If it is known we populate it and return it.
+func (t *Tab) knownElement(node *gcdapi.DOMNode) *Element {
+	if ele, ok := t.getElement(node.NodeId); ok {
+		ele.populateElement(node)
+		return ele
+	}
+	newEle := newReadyElement(t, node)
+	return newEle
+}
+
+// recursively create new elements off nodes and their children
+// Handle known and unknown elements by calling knownElement prior to
+// adding to our list.
+func (t *Tab) createNewNodes(nodes []*gcdapi.DOMNode) {
+	for _, newNode := range nodes {
+		log.Printf("Adding new Node: %s id: %d\n", newNode.NodeName, newNode.NodeId)
+		newEle := t.knownElement(newNode)
+		t.eleMutex.Lock()
+		t.Elements[newNode.NodeId] = newEle
+		t.eleMutex.Unlock()
+		t.createNewNodes(newNode.Children)
+	}
+}
+
+// safely returns the element by looking it up by nodeId
+func (t *Tab) getElement(nodeId int) (*Element, bool) {
+	t.eleMutex.RLock()
+	defer t.eleMutex.RUnlock()
+	ele, ok := t.Elements[nodeId]
+	return ele, ok
+}
+
+// Safely adds the nodes in the document to our list of elements
+func (t *Tab) addDocumentNodes(doc *gcdapi.DOMNode) {
+	newEle := t.knownElement(doc)
+	t.eleMutex.Lock()
+	t.Elements[doc.NodeId] = newEle
+	t.eleMutex.Unlock()
+	t.createNewNodes(doc.Children)
 }

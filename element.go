@@ -220,69 +220,7 @@ func (e *Element) SendKeys(text string) error {
 	if err != nil {
 		return err
 	}
-	theType := "char"
-	modifiers := 0
-	timestamp := 0.0
-	unmodifiedText := ""
-	keyIdentifier := ""
-	code := ""
-	key := ""
-	windowsVirtualKeyCode := 0
-	nativeVirtualKeyCode := 0
-	autoRepeat := false
-	isKeypad := false
-	isSystemKey := false
-
-	// loop over input, looking for system keys and handling them
-	for _, inputchar := range text {
-		input := string(inputchar)
-
-		// check system keys
-		switch input {
-		case "\r", "\n", "\t", "\b":
-			if err := e.pressSystemKey(input); err != nil {
-				return err
-			}
-			continue
-		}
-		_, err = e.tab.Input.DispatchKeyEvent(theType, modifiers, timestamp, input, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
-		if err != nil {
-			return err
-		}
-	}
-	return err
-}
-
-// Super ghetto, i know.
-func (e *Element) pressSystemKey(systemKey string) error {
-	systemKeyCode := 0
-	keyIdentifier := ""
-	switch systemKey {
-	case "\b":
-		keyIdentifier = "Backspace"
-		systemKeyCode = 8
-	case "\t":
-		keyIdentifier = "Tab"
-		systemKeyCode = 9
-	case "\r", "\n":
-		systemKey = "\r"
-		keyIdentifier = "Enter"
-		systemKeyCode = 13
-	}
-
-	modifiers := 0
-	timestamp := 0.0
-	unmodifiedText := ""
-	autoRepeat := false
-	isKeypad := false
-	isSystemKey := false
-	if _, err := e.tab.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, systemKey, systemKey, keyIdentifier, keyIdentifier, "", systemKeyCode, systemKeyCode, autoRepeat, isKeypad, isSystemKey); err != nil {
-		return err
-	}
-	if _, err := e.tab.Input.DispatchKeyEvent("char", modifiers, timestamp, systemKey, unmodifiedText, "", "", "", 0, 0, autoRepeat, isKeypad, isSystemKey); err != nil {
-		return err
-	}
-	return nil
+	return e.tab.SendKeys(text)
 }
 
 func (e *Element) Dimensions() ([]float64, error) {
