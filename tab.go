@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// when we are unable to find an element/nodeId
+// When we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
 	Message string
 }
@@ -19,7 +19,7 @@ func (e *ElementNotFoundErr) Error() string {
 	return "Unable to find element: " + e.Message
 }
 
-// when we are unable to access a tab
+// When we are unable to access a tab
 type InvalidTabErr struct {
 	Message string
 }
@@ -28,6 +28,7 @@ func (e *InvalidTabErr) Error() string {
 	return "Unable to access tab: " + e.Message
 }
 
+// When Tab.Navigate has timed out
 type NavigationTimeoutErr struct {
 	Message string
 }
@@ -42,11 +43,17 @@ type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 // Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
 type PromptHandlerFunc func(tab *Tab, message, promptType string)
 
+// A function for handling console messages
 type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
 
+// A function for handling network requests
 type NetworkRequestHandlerFunc func(tab *Tab, request *NetworkRequest)
 
+// A function for handling network responses
 type NetworkResponseHandlerFunc func(tab *Tab, response *NetworkResponse)
+
+// A function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
+type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 
 type Tab struct {
 	*gcd.ChromeTarget
@@ -112,17 +119,6 @@ func (t *Tab) GetDocument() (*gcdapi.DOMNode, error) {
 	}
 	t.addDocumentNodes(doc)
 	return doc, nil
-}
-
-// Registers chrome to start retrieving console messages, caller must pass in call back
-// function to handle it.
-func (t *Tab) GetConsoleMessages(messageHandler ConsoleMessageFunc) {
-	t.Subscribe("Console.messageAdded", t.defaultConsoleMessageAdded(messageHandler))
-}
-
-// Stops the debugger service from sending console messages and closes the channel
-func (t *Tab) StopConsoleMessages() {
-	t.Unsubscribe("Console.messageAdded")
 }
 
 // Returns the top window documents source, as visible
@@ -344,9 +340,7 @@ func (t *Tab) GetCurrentUrl() (string, error) {
 	return doc.DocumentURL, nil
 }
 
-// Returns the cookies from the last navigated tab. Note if two tabs are open
-// it will return the cookies from the last tab. I'm unsure why this is, since
-// it should be a tab dependent operation.
+// Returns the cookies from the tab.
 func (t *Tab) GetCookies() ([]*gcdapi.NetworkCookie, error) {
 	return t.Page.GetCookies()
 }
@@ -354,6 +348,29 @@ func (t *Tab) GetCookies() ([]*gcdapi.NetworkCookie, error) {
 // Deletes the cookie from the browser
 func (t *Tab) DeleteCookie(cookieName, url string) error {
 	_, err := t.Page.DeleteCookie(cookieName, url)
+	return err
+}
+
+// Override the user agent for requests going out.
+func (t *Tab) SetUserAgent(userAgent string) error {
+	_, err := t.Network.SetUserAgentOverride(userAgent)
+	return err
+}
+
+// Registers chrome to start retrieving console messages, caller must pass in call back
+// function to handle it.
+func (t *Tab) GetConsoleMessages(messageHandler ConsoleMessageFunc) {
+	t.Subscribe("Console.messageAdded", t.defaultConsoleMessageAdded(messageHandler))
+}
+
+// Stops the debugger service from sending console messages and closes the channel
+// Pass shouldDisable as true if you wish to disable Console debugger
+func (t *Tab) StopConsoleMessages(shouldDisable bool) error {
+	var err error
+	t.Unsubscribe("Console.messageAdded")
+	if shouldDisable {
+		_, err = t.Console.Disable()
+	}
 	return err
 }
 
@@ -395,16 +412,73 @@ func (t *Tab) ListenNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, r
 }
 
 // Unsubscribes from network request/response events and disables the Network debugger.
-func (t *Tab) StopListeningNetwork() error {
+// Pass shouldDisable as true if you wish to disable the network
+func (t *Tab) StopListeningNetwork(shouldDisable bool) error {
+	var err error
 	t.Unsubscribe("Network.requestWillBeSent")
 	t.Unsubscribe("Network.responseReceived")
-	_, err := t.Network.Disable()
+	if shouldDisable {
+		_, err = t.Network.Disable()
+	}
 	return err
 }
 
-// Override the user agent for requests going out.
-func (t *Tab) SetUserAgent(userAgent string) error {
-	_, err := t.Network.SetUserAgentOverride(userAgent)
+// Listens for storage events, storageFn should switch on type of cleared, removed, added or updated.
+// cleared holds IsLocalStorage and SecurityOrigin values only
+// removed contains above plus Key
+// added contains above plus NewValue
+// updated contains above plus OldValue
+func (t *Tab) ListenStorageEvents(storageFn StorageFunc) error {
+	_, err := t.DOMStorage.Enable()
+	if err != nil {
+		return err
+	}
+	t.Subscribe("Storage.domStorageItemsCleared", func(target *gcd.ChromeTarget, payload []byte) {
+		message := &gcdapi.DOMStorageDomStorageItemsClearedEvent{}
+		if err := json.Unmarshal(payload, message); err == nil {
+			p := message.Params
+			storageEvent := &StorageEvent{IsLocalStorage: p.StorageId.IsLocalStorage, SecurityOrigin: p.StorageId.SecurityOrigin}
+			storageFn(t, "cleared", storageEvent)
+		}
+	})
+	t.Subscribe("Storage.domStorageItemRemoved", func(target *gcd.ChromeTarget, payload []byte) {
+		message := &gcdapi.DOMStorageDomStorageItemRemovedEvent{}
+		if err := json.Unmarshal(payload, message); err == nil {
+			p := message.Params
+			storageEvent := &StorageEvent{IsLocalStorage: p.StorageId.IsLocalStorage, SecurityOrigin: p.StorageId.SecurityOrigin, Key: p.Key}
+			storageFn(t, "removed", storageEvent)
+		}
+	})
+	t.Subscribe("Storage.domStorageItemAdded", func(target *gcd.ChromeTarget, payload []byte) {
+		message := &gcdapi.DOMStorageDomStorageItemAddedEvent{}
+		if err := json.Unmarshal(payload, message); err == nil {
+			p := message.Params
+			storageEvent := &StorageEvent{IsLocalStorage: p.StorageId.IsLocalStorage, SecurityOrigin: p.StorageId.SecurityOrigin, Key: p.Key, NewValue: p.NewValue}
+			storageFn(t, "added", storageEvent)
+		}
+	})
+	t.Subscribe("Storage.domStorageItemUpdated", func(target *gcd.ChromeTarget, payload []byte) {
+		message := &gcdapi.DOMStorageDomStorageItemUpdatedEvent{}
+		if err := json.Unmarshal(payload, message); err == nil {
+			p := message.Params
+			storageEvent := &StorageEvent{IsLocalStorage: p.StorageId.IsLocalStorage, SecurityOrigin: p.StorageId.SecurityOrigin, Key: p.Key, NewValue: p.NewValue, OldValue: p.OldValue}
+			storageFn(t, "updated", storageEvent)
+		}
+	})
+	return nil
+}
+
+// Stops listening for storage events, set shouldDisable to true if you wish to disable DOMStorage debugging.
+func (t *Tab) StopListeningStorage(shouldDisable bool) error {
+	var err error
+	t.Unsubscribe("Storage.domStorageItemsCleared")
+	t.Unsubscribe("Storage.domStorageItemRemoved")
+	t.Unsubscribe("Storage.domStorageItemAdded")
+	t.Unsubscribe("Storage.domStorageItemUpdated")
+
+	if shouldDisable {
+		_, err = t.DOMStorage.Disable()
+	}
 	return err
 }
 
@@ -417,7 +491,6 @@ func (t *Tab) SetJavaScriptPromptHandler(promptHandlerFn PromptHandlerFunc) {
 		if err := json.Unmarshal(payload, message); err == nil {
 			promptHandlerFn(t, message.Params.Message, message.Params.Type)
 		}
-
 	})
 }
 

@@ -46,11 +46,27 @@ type NetworkRequest struct {
 }
 
 type NetworkResponse struct {
-	RequestId   string
-	FrameId     string
-	LoaderId    string
-	DocumentURL string
-	Response    *gcdapi.NetworkResponse
-	Timestamp   float64
-	Type        string
+	RequestId string
+	FrameId   string
+	LoaderId  string
+	Response  *gcdapi.NetworkResponse
+	Timestamp float64
+	Type      string
+}
+
+type StorageEventType uint16
+
+const (
+	StorageItemsCleared StorageEventType = 0x0
+	StorageItemRemoved  StorageEventType = 0x01
+	StorageItemAdded    StorageEventType = 0x02
+	StorageItemUpdated  StorageEventType = 0x03
+)
+
+type StorageEvent struct {
+	IsLocalStorage bool
+	SecurityOrigin string
+	Key            string
+	NewValue       string
+	OldValue       string
 }
