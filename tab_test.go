@@ -196,6 +196,81 @@ func TestTabInjectScript(t *testing.T) {
 	wg.Wait()
 }
 
+func TestTabTwoTabCookies(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab1, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	tab2, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, err := tab1.Navigate(testServerAddr + "cookie1.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	cookies1, err := tab1.GetCookies()
+	if err != nil {
+		t.Fatalf("Error getting first tab cookies: %s\n", err)
+	}
+	for _, cookie := range cookies1 {
+		t.Logf("%#v\n", cookie)
+	}
+
+	if _, err := tab2.Navigate(testServerAddr + "cookie2.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	cookies2, err := tab2.GetCookies()
+	if err != nil {
+		t.Fatalf("Error getting second tab cookies: %s\n", err)
+	}
+	for _, cookie := range cookies2 {
+		t.Logf("%#v\n", cookie)
+	}
+
+	// oddly this returns tab2's cookies :<
+	cookies3, err := tab1.GetCookies()
+	if err != nil {
+		t.Fatalf("Error getting tab1 cookies again: %s\n", err)
+	}
+	for _, cookie := range cookies3 {
+		t.Logf("%#v\n", cookie)
+	}
+}
+
+func TestTabNetworkListen(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab1, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	requestHandlerFn := func(callerTab *Tab, request *NetworkRequest) {
+		t.Logf("Got network request: %#v\n", request)
+	}
+	responseHandlerFn := func(callerTab *Tab, response *NetworkResponse) {
+		t.Logf("got a network response: %#v\n", response)
+	}
+	if err := tab1.ListenNetworkTraffic(requestHandlerFn, responseHandlerFn); err != nil {
+		t.Fatalf("Error listening to network traffic: %s\n", err)
+	}
+	if _, err := tab1.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("error navigating to target: %s\n", err)
+	}
+	tab2, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	if _, err := tab2.Navigate(testServerAddr + "console_log.html"); err != nil {
+		t.Fatalf("error navigating to target: %s\n", err)
+	}
+}
+
 func testTimeout(t *testing.T, duration time.Duration) {
 	time.Sleep(duration)
 	t.Fatalf("timed out waiting for console message")

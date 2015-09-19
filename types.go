@@ -32,3 +32,25 @@ type NodeChangeEvent struct {
 	PreviousNodeId int               // previous node id for childNodeInsertedEvent
 
 }
+
+type NetworkRequest struct {
+	RequestId        string
+	FrameId          string
+	LoaderId         string
+	DocumentURL      string
+	Request          *gcdapi.NetworkRequest
+	Timestamp        float64
+	Initiator        *gcdapi.NetworkInitiator
+	RedirectResponse *gcdapi.NetworkResponse
+	Type             string
+}
+
+type NetworkResponse struct {
+	RequestId   string
+	FrameId     string
+	LoaderId    string
+	DocumentURL string
+	Response    *gcdapi.NetworkResponse
+	Timestamp   float64
+	Type        string
+}

@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-// A function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
-// Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
-type PromptHandler func(tab *Tab, message, promptType string)
-
 // when we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
 	Message string
@@ -42,7 +38,15 @@ func (e *NavigationTimeoutErr) Error() string {
 
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
+// A function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
+// Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
+type PromptHandlerFunc func(tab *Tab, message, promptType string)
+
 type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
+
+type NetworkRequestHandlerFunc func(tab *Tab, request *NetworkRequest)
+
+type NetworkResponseHandlerFunc func(tab *Tab, response *NetworkResponse)
 
 type Tab struct {
 	*gcd.ChromeTarget
@@ -340,18 +344,73 @@ func (t *Tab) GetCurrentUrl() (string, error) {
 	return doc.DocumentURL, nil
 }
 
-// Returns the cookies for the current tab
+// Returns the cookies from the last navigated tab. Note if two tabs are open
+// it will return the cookies from the last tab. I'm unsure why this is, since
+// it should be a tab dependent operation.
 func (t *Tab) GetCookies() ([]*gcdapi.NetworkCookie, error) {
 	return t.Page.GetCookies()
 }
 
-// Deletes the cookie from the current tab
+// Deletes the cookie from the browser
 func (t *Tab) DeleteCookie(cookieName, url string) error {
 	_, err := t.Page.DeleteCookie(cookieName, url)
 	return err
 }
 
-func (t *Tab) SetJavaScriptPromptHandler(promptHandlerFn PromptHandler) {
+// Listens to network traffic, either handler can be nil in which case we'll only call the handler defined.
+func (t *Tab) ListenNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, responseHandlerFn NetworkResponseHandlerFunc) error {
+	if requestHandlerFn == nil && responseHandlerFn == nil {
+		return nil
+	}
+	_, err := t.Network.Enable()
+	if err != nil {
+		return err
+	}
+
+	if requestHandlerFn != nil {
+		t.Subscribe("Network.requestWillBeSent", func(target *gcd.ChromeTarget, payload []byte) {
+			if target != t.ChromeTarget {
+				log.Printf("got a request for a different target")
+			}
+			message := &gcdapi.NetworkRequestWillBeSentEvent{}
+			if err := json.Unmarshal(payload, message); err == nil {
+				p := message.Params
+				request := &NetworkRequest{RequestId: p.RequestId, FrameId: p.FrameId, LoaderId: p.LoaderId, DocumentURL: p.DocumentURL, Request: p.Request, Timestamp: p.Timestamp, Initiator: p.Initiator, RedirectResponse: p.RedirectResponse, Type: p.Type}
+				requestHandlerFn(t, request)
+			}
+		})
+	}
+
+	if responseHandlerFn != nil {
+		t.Subscribe("Network.responseReceived", func(target *gcd.ChromeTarget, payload []byte) {
+			message := &gcdapi.NetworkResponseReceivedEvent{}
+			if err := json.Unmarshal(payload, message); err == nil {
+				p := message.Params
+				response := &NetworkResponse{RequestId: p.RequestId, FrameId: p.FrameId, LoaderId: p.LoaderId, Response: p.Response, Timestamp: p.Timestamp, Type: p.Type}
+				responseHandlerFn(t, response)
+			}
+		})
+	}
+	return nil
+}
+
+// Unsubscribes from network request/response events and disables the Network debugger.
+func (t *Tab) StopListeningNetwork() error {
+	t.Unsubscribe("Network.requestWillBeSent")
+	t.Unsubscribe("Network.responseReceived")
+	_, err := t.Network.Disable()
+	return err
+}
+
+// Override the user agent for requests going out.
+func (t *Tab) SetUserAgent(userAgent string) error {
+	_, err := t.Network.SetUserAgentOverride(userAgent)
+	return err
+}
+
+// Set a handler for javascript prompts, most likely you should call tab.Page.HandleJavaScriptDialog(accept bool, msg string)
+// to actually handle the prompt, otherwise the tab will be blocked waiting for input and never additional events.
+func (t *Tab) SetJavaScriptPromptHandler(promptHandlerFn PromptHandlerFunc) {
 	t.Subscribe("Page.javascriptDialogOpening", func(target *gcd.ChromeTarget, payload []byte) {
 		log.Printf("Javascript Dialog Opened!: %s\n", string(payload))
 		message := &gcdapi.PageJavascriptDialogOpeningEvent{}
