@@ -18,6 +18,8 @@ var (
 	testServerAddr string
 )
 
+var testStartupFlags = []string{"--disable-new-tab-first-run", "--no-first-run", "--disable-popup-blocking"}
+
 func init() {
 	flag.StringVar(&testPath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to Xvfb")
 	flag.StringVar(&testDir, "dir", "C:\\temp\\", "user directory")
@@ -111,7 +113,8 @@ func TestCloseTab(t *testing.T) {
 
 func testDefaultStartup(t *testing.T) *AutoGcd {
 	s := NewSettings(testPath, testRandomDir(t))
-	s.AddStartupFlags([]string{"--disable-new-tab-first-run", "--no-first-run"})
+	s.RemoveUserDir(true)
+	s.AddStartupFlags(testStartupFlags)
 	s.SetDebuggerPort(testRandomPort(t))
 	auto := NewAutoGcd(s)
 	if err := auto.Start(); err != nil {

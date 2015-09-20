@@ -13,11 +13,18 @@ discarded.
 Dealing with frames is also different than WebDriver. There is no SwitchToFrame, you simply pass in the frameId
 to certain methods that require it. Internally a list of Documents is stored and will look up the element provided
 a valid frameId is supplied.
+
+Lastly, dealing with windows... doesn't really work since they open a new tab. A possible solution would be to monitor
+the list of tabs by calling AutoGcd.RefreshTabs() and doing a diff of known versus new. You could then do a Tab.Reload()
+to refresh the page. It is recommended that you clear cache on the tab first so it is possible to trap the various
+network events. There are other dirty hacks you could do as well, such as injecting script to override window.open,
+or rewriting links etc.
 */
 package autogcd
 
 import (
 	"github.com/wirepair/gcd"
+	"os"
 	"sync"
 )
 
@@ -52,15 +59,11 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 
 // Starts Google Chrome with debugging enabled.
 func (auto *AutoGcd) Start() error {
-	var tabs []*gcd.ChromeTarget
-	var err error
 	auto.debugger.StartProcess(auto.settings.chromePath, auto.settings.userDir, auto.settings.chromePort)
-
-	tabs, err = auto.debugger.GetTargets()
+	tabs, err := auto.debugger.GetTargets()
 	if err != nil {
 		return err
 	}
-
 	auto.tabLock.Lock()
 	for _, tab := range tabs {
 		auto.tabs[tab.Target.Id] = NewTab(tab)
@@ -70,12 +73,38 @@ func (auto *AutoGcd) Start() error {
 }
 
 // Closes all tabs and shuts down the browser.
-func (auto *AutoGcd) Shutdown() {
+func (auto *AutoGcd) Shutdown() error {
 	auto.tabLock.Lock()
 	for _, tab := range auto.tabs {
 		auto.debugger.CloseTab(tab.ChromeTarget)
 	}
 	auto.tabLock.Unlock()
+	auto.debugger.ExitProcess()
+	if auto.settings.removeUserDir == true {
+		return os.RemoveAll(auto.settings.userDir)
+	}
+	return nil
+}
+
+// Refreshs our internal list of tabs and return all tabs
+func (auto *AutoGcd) RefreshTabList() (map[string]*Tab, error) {
+
+	knownTabs := auto.GetAllTabs()
+	knownIds := make(map[string]struct{}, len(knownTabs))
+	for _, v := range knownTabs {
+		knownIds[v.Target.Id] = struct{}{}
+	}
+	newTabs, err := auto.debugger.GetNewTargets(knownIds)
+	if err != nil {
+		return nil, err
+	}
+
+	auto.tabLock.Lock()
+	for _, newTab := range newTabs {
+		auto.tabs[newTab.Target.Id] = NewTab(newTab)
+	}
+	auto.tabLock.Unlock()
+	return auto.GetAllTabs(), nil
 }
 
 // Returns the first "visual" tab.

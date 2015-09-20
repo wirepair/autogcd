@@ -340,6 +340,36 @@ func TestTabNetworkListen(t *testing.T) {
 	}
 }
 
+func TestTabWindows(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	if _, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
+		t.Fatalf("error opening first window")
+	}
+
+	ele, _, err := tab.GetElementById("mainwindow")
+	if err != nil {
+		t.Fatalf("error getting mainwindow element")
+	}
+	ele.WaitForReady()
+	tabs := testAuto.GetAllTabs()
+	if err != nil {
+		t.Fatalf("error getting tabs")
+	}
+
+	newTabs, err := testAuto.RefreshTabList()
+	if err != nil {
+		t.Fatalf("Error getting new tabs")
+	}
+
+	t.Logf("%d unknown tabs found!", len(newTabs)-len(tabs))
+
+}
+
 func testTimeout(t *testing.T, duration time.Duration) {
 	time.Sleep(duration)
 	t.Fatalf("timed out waiting for console message")
