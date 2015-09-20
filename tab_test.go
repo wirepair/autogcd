@@ -35,7 +35,7 @@ func TestTabGetConsoleMessage(t *testing.T) {
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Logf("got message: %v\n", message)
-		callerTab.StopConsoleMessages()
+		callerTab.StopConsoleMessages(true)
 		wg.Done()
 	}
 	tab.GetConsoleMessages(msgHandler)
@@ -89,9 +89,44 @@ func TestTabGetPageSource(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	src, err = tab.GetPageSource()
+	src, err = tab.GetPageSource("")
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
+	}
+	t.Logf("source: %s\n", src)
+}
+
+func TestTabFrameGetPageSource(t *testing.T) {
+	var src string
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	ele, _, err := tab.GetElementById("innerfr")
+	if err != nil {
+		t.Fatalf("error getting inner frame element")
+	}
+	err = ele.WaitForReady()
+	if err != nil {
+		t.Fatalf("error waiting for inner frame element")
+	}
+	if ele.FrameId() == "" {
+		t.Fatalf("frameid is empty!")
+	}
+
+	src, err = tab.GetPageSource(ele.FrameId())
+	if err != nil {
+		t.Fatalf("Error getting page source: %s\n", err)
+	}
+	if !strings.Contains(src, "<div>HELLL") {
+		t.Fatalf("error finding dynamically inserted element in source: %s\n", src)
 	}
 	t.Logf("source: %s\n", src)
 }
@@ -194,6 +229,40 @@ func TestTabInjectScript(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestTabEvaluateScript(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	wg := &sync.WaitGroup{}
+	wg.Add(1) // should be called 2x, one for main page, one for script_inner.html
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		if strings.Contains(message.Text, "inject") {
+			t.Logf("got message: %s\n", message.Text)
+			wg.Done()
+		}
+	}
+	tab.GetConsoleMessages(msgHandler)
+
+	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	res, _, _, errEval := tab.EvaluateScript("JSON.stringify(document)")
+	if errEval != nil {
+		t.Fatalf("error evaluating script: %s\n", errEval)
+	}
+	// trigger completion
+	_, _, _, errEval = tab.EvaluateScript("console.log('inject ' + location.href);")
+	if errEval != nil {
+		t.Fatalf("error evaluating trigger script: %s\n", errEval)
+	}
+	wg.Wait()
+	t.Logf("res: %#v\n", res)
 }
 
 func TestTabTwoTabCookies(t *testing.T) {

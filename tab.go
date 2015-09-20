@@ -19,6 +19,14 @@ func (e *ElementNotFoundErr) Error() string {
 	return "Unable to find element: " + e.Message
 }
 
+type InvalidDocIdErr struct {
+	Id string
+}
+
+func (e *InvalidDocIdErr) Error() string {
+	return "Document Id: " + e.Id + " not found."
+}
+
 // When we are unable to access a tab
 type InvalidTabErr struct {
 	Message string
@@ -59,16 +67,22 @@ type Tab struct {
 	*gcd.ChromeTarget
 	eleMutex          *sync.RWMutex
 	Elements          map[int]*Element
+	docMutex          *sync.RWMutex
+	Documents         map[string]*Element // "top" for top document, frameIds for frame documents
 	nodeChange        chan *NodeChangeEvent
 	navigationTimeout time.Duration
+	elementTimeout    time.Duration
 }
 
 func NewTab(target *gcd.ChromeTarget) *Tab {
 	t := &Tab{ChromeTarget: target}
 	t.eleMutex = &sync.RWMutex{}
 	t.Elements = make(map[int]*Element)
+	t.docMutex = &sync.RWMutex{}
+	t.Documents = make(map[string]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
 	t.navigationTimeout = 30 // default 30 seconds for timeout
+	t.elementTimeout = 5     // default 5 seconds for waiting for element.
 	t.Page.Enable()
 	t.DOM.Enable()
 	t.Console.Enable()
@@ -78,8 +92,14 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	return t
 }
 
+// How long to wait for navigations before giving up
 func (t *Tab) SetNavigationTimeout(timeout time.Duration) {
 	t.navigationTimeout = timeout
+}
+
+// How long to wait for ele.WaitForReady() before giving up
+func (t *Tab) SetElementWaitTimeout(timeout time.Duration) {
+	t.elementTimeout = timeout
 }
 
 // Navigates to a URL and does not return until the Page.loadEventFired event.
@@ -109,9 +129,7 @@ func (t *Tab) Navigate(url string) (string, error) {
 	return frameId, nil
 }
 
-// Gets the document and updates our list of Elements in the event
-// they've changed, methods should always internally call this so we
-// can be sure our Element list is up to date
+// Gets the document and updates our list of Elements in the event they've changed.
 func (t *Tab) GetDocument() (*gcdapi.DOMNode, error) {
 	doc, err := t.DOM.GetDocument()
 	if err != nil {
@@ -121,13 +139,16 @@ func (t *Tab) GetDocument() (*gcdapi.DOMNode, error) {
 	return doc, nil
 }
 
-// Returns the top window documents source, as visible
-func (t *Tab) GetPageSource() (string, error) {
-	node, err := t.GetDocument()
+// Returns the documents source, as visible, if docId is empty, returns top document.
+func (t *Tab) GetPageSource(docId string) (string, error) {
+	if docId == "" {
+		docId = "top"
+	}
+	doc, err := t.GetDocumentByDocId(docId)
 	if err != nil {
 		return "", err
 	}
-	return t.DOM.GetOuterHTML(node.NodeId)
+	return t.DOM.GetOuterHTML(doc.id)
 }
 
 // Returns the source of a script by its scriptId.
@@ -157,16 +178,21 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 // Returns the element by searching the top level document for an element with attributeId
 // Does not work on frames.
 func (t *Tab) GetElementById(attributeId string) (*Element, bool, error) {
+	return t.GetDocumentElementById("top", attributeId)
+}
+
+func (t *Tab) GetDocumentElementById(docId, attributeId string) (*Element, bool, error) {
 	var err error
 	var nodeId int
-	var doc *gcdapi.DOMNode
-	selector := "#" + attributeId
-	doc, err = t.GetDocument()
+
+	docNode, err := t.GetDocumentByDocId(docId)
 	if err != nil {
 		return nil, false, err
 	}
 
-	nodeId, err = t.DOM.QuerySelector(doc.NodeId, selector)
+	selector := "#" + attributeId
+
+	nodeId, err = t.DOM.QuerySelector(docNode.id, selector)
 	if err != nil {
 		return nil, false, err
 	}
@@ -176,13 +202,29 @@ func (t *Tab) GetElementById(attributeId string) (*Element, bool, error) {
 
 // Get all Elements that match a selector from the top level document
 func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
-	// get document
-	docNode, err := t.GetDocument()
+	return t.GetDocumentElementsBySelector("top", selector)
+}
+
+// Safely gets a reference to the document from the docId, returns error if
+// it doesn't exist.
+func (t *Tab) GetDocumentByDocId(docId string) (*Element, error) {
+	t.docMutex.RLock()
+	docNode := t.Documents[docId]
+	t.docMutex.RUnlock()
+
+	if docNode == nil {
+		return nil, &InvalidDocIdErr{Id: docId}
+	}
+	return docNode, nil
+}
+
+func (t *Tab) GetDocumentElementsBySelector(docId, selector string) ([]*Element, error) {
+	docNode, err := t.GetDocumentByDocId(docId)
 	if err != nil {
 		return nil, err
 	}
 
-	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.NodeId, selector)
+	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.id, selector)
 	if errQuery != nil {
 		return nil, errQuery
 	}
@@ -208,11 +250,11 @@ func (t *Tab) GetFrameResources() (map[string]string, error) {
 	return resourceMap, nil
 }
 
-// Returns the raw source (non-serialized DOM) of the frame. Unfortunately,
-// it does not appear possible to get a serialized version using chrome debugger.
-// One could extract the urls and load them into a separate tab however.
-func (t *Tab) GetFrameSource(id, url string) (string, bool, error) {
-	return t.Page.GetResourceContent(id, url)
+// Returns the raw source (non-serialized DOM) of the frame. If you want the visible
+// source, call GetPageSource, passing in the frameId. Make sure you wait for the element's
+// WaitForReady() to return without error first.
+func (t *Tab) GetFrameSource(frameId, url string) (string, bool, error) {
+	return t.Page.GetResourceContent(frameId, url)
 }
 
 // Issues a left button mousePressed then mouseReleased on the x, y coords provided.
@@ -302,8 +344,10 @@ func (t *Tab) pressSystemKey(systemKey string) error {
 	return nil
 }
 
-// Injects custom javascript prior to the page loading on all frames. Returns an identifier which can be
-// used to remove the script.
+// Injects custom javascript prior to the page loading on all frames. Returns scriptId which can be
+// used to remove the script. Since this loads on all frames, if you only want the script to interact with the
+// top document, you'll need to do checks in the injected script such as testing location.href.
+// Alternatively, you can use Tab.EvaluateScript to only work on the global context.
 func (t *Tab) InjectScriptOnLoad(scriptSource string) (string, error) {
 	scriptId, err := t.Page.AddScriptToEvaluateOnLoad(scriptSource)
 	if err != nil {
@@ -312,9 +356,21 @@ func (t *Tab) InjectScriptOnLoad(scriptSource string) (string, error) {
 	return scriptId, nil
 }
 
+// Removes the script by the scriptId.
 func (t *Tab) RemoveScriptFromOnLoad(scriptId string) error {
 	_, err := t.Page.RemoveScriptToEvaluateOnLoad(scriptId)
 	return err
+}
+
+// Evaluates script in the global context.
+func (t *Tab) EvaluateScript(scriptSource string) (*gcdapi.RuntimeRemoteObject, bool, *gcdapi.DebuggerExceptionDetails, error) {
+	objectGroup := "autogcd"
+	includeCommandLineAPI := true
+	doNotPauseOnExceptionsAndMuteConsole := true
+	contextId := 0
+	returnByValue := true
+	generatePreview := true
+	return overridenRuntimeEvaluate(t.ChromeTarget, scriptSource, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, contextId, returnByValue, generatePreview)
 }
 
 // Takes a screenshot of the currently loaded page (only the dimensions visible in browser window)
@@ -333,11 +389,11 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 
 // Returns the current url of the top level document
 func (t *Tab) GetCurrentUrl() (string, error) {
-	doc, err := t.GetDocument()
+	doc, err := t.GetDocumentByDocId("top")
 	if err != nil {
 		return "", err
 	}
-	return doc.DocumentURL, nil
+	return doc.node.DocumentURL, nil
 }
 
 // Returns the cookies from the tab.
@@ -559,6 +615,9 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 		t.eleMutex.Lock()
 		t.Elements = make(map[int]*Element)
 		t.eleMutex.Unlock()
+		t.docMutex.Lock()
+		t.Documents = make(map[string]*Element)
+		t.docMutex.Unlock()
 	case SetChildNodesEvent:
 		log.Println("SetChildNodesEvent, adding new nodes")
 		t.createNewNodes(change.Nodes)
@@ -612,14 +671,25 @@ func (t *Tab) knownElement(node *gcdapi.DOMNode) *Element {
 
 // recursively create new elements off nodes and their children
 // Handle known and unknown elements by calling knownElement prior to
-// adding to our list.
+// adding to our list. If the node is an iframe, we create a new Element from it's
+// ContentDocument and add it to our list of frames. Unlike the Elements map
+// Frames are referenced by FrameIds.
 func (t *Tab) createNewNodes(nodes []*gcdapi.DOMNode) {
 	for _, newNode := range nodes {
 		log.Printf("Adding new Node: %s id: %d\n", newNode.NodeName, newNode.NodeId)
 		newEle := t.knownElement(newNode)
+
 		t.eleMutex.Lock()
 		t.Elements[newNode.NodeId] = newEle
 		t.eleMutex.Unlock()
+
+		if newNode.FrameId != "" {
+			newDoc := t.knownElement(newNode.ContentDocument)
+			t.docMutex.Lock()
+			t.Documents[newNode.FrameId] = newDoc
+			t.docMutex.Unlock()
+		}
+
 		t.createNewNodes(newNode.Children)
 	}
 }
@@ -634,7 +704,13 @@ func (t *Tab) getElement(nodeId int) (*Element, bool) {
 
 // Safely adds the nodes in the document to our list of elements
 func (t *Tab) addDocumentNodes(doc *gcdapi.DOMNode) {
+
 	newEle := t.knownElement(doc)
+	// add the document to our list of documents
+	t.docMutex.Lock()
+	t.Documents["top"] = newEle
+	t.docMutex.Unlock()
+
 	t.eleMutex.Lock()
 	t.Elements[doc.NodeId] = newEle
 	t.eleMutex.Unlock()

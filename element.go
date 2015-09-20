@@ -3,6 +3,7 @@ package autogcd
 import (
 	"github.com/wirepair/gcd/gcdapi"
 	"strings"
+	"time"
 )
 
 type InvalidElementErr struct {
@@ -30,9 +31,9 @@ func (e *InvalidDimensionsErr) Error() string {
 }
 
 // An abstraction over a DOM element, it can be in three modes
-// NotReady - it's data has not been returned to us by the debugger yet
-// Ready - the debugger has given us the DOMNode reference
-// Invalidated - The Element has been destroyed
+// NotReady - it's data has not been returned to us by the debugger yet.
+// Ready - the debugger has given us the DOMNode reference.
+// Invalidated - The Element has been destroyed.
 // Certain actions require that the Element be populated (getting nodename/type)
 // If you need this information, wait for IsReady() to return true
 type Element struct {
@@ -69,14 +70,27 @@ func newReadyElement(tab *Tab, node *gcdapi.DOMNode) *Element {
 	return e
 }
 
+// Has the Chrome Debugger notified us of this Elements data yet?
 func (e *Element) IsReady() bool {
 	return (e.ready && !e.invalidated)
 }
 
+// Has the debugger invalidated (removed) the element from the DOM?
 func (e *Element) IsInvalid() bool {
 	return e.invalidated
 }
 
+// Is this element a frame?
+func (e *Element) IsFrame() bool {
+	return e.node.FrameId != ""
+}
+
+// Returns the frameId if IsFrame is true and the Element is in a Ready state.
+func (e *Element) FrameId() string {
+	return e.node.FrameId
+}
+
+// populate the Element with node data.
 func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.node = node
 	e.nodeType = node.NodeType
@@ -89,22 +103,27 @@ func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.ready = true
 }
 
+// updates the attribute name/value pair
 func (e *Element) updateAttribute(name, value string) {
 	e.attributes[name] = value
 }
 
+// removes the attribute from our attributes list.
 func (e *Element) removeAttribute(name string) {
 	delete(e.attributes, name)
 }
 
+// updates character data
 func (e *Element) updateCharacterData(newValue string) {
 	e.characterData = newValue
 }
 
+// updates child node counts.
 func (e *Element) updateChildNodeCount(newValue int) {
 	e.childNodeCount = newValue
 }
 
+// The element has become invalid.
 func (e *Element) setInvalidated(invalid bool) {
 	e.invalidated = invalid
 }
@@ -135,6 +154,7 @@ func (e *Element) GetCssStyleText() (string, string, error) {
 	return inline.CssText, attribute.CssText, nil
 }
 
+// Returns event listeners for the element, both static and dynamically bound.
 func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error) {
 	rro, err := e.tab.DOM.ResolveNode(e.id, "")
 	if err != nil {
@@ -148,12 +168,19 @@ func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error
 }
 
 // If we are ready, just return, if we are not, wait for the readyGate
-// to be closed
-func (e *Element) WaitForReady() {
+// to be closed or for the timeout timer to fire.
+func (e *Element) WaitForReady() error {
 	if e.ready {
-		return
+		return nil
 	}
-	<-e.readyGate
+
+	timeout := time.NewTimer(e.tab.elementTimeout * time.Second)
+	select {
+	case <-e.readyGate:
+		return nil
+	case <-timeout.C:
+		return &ElementNotReadyErr{}
+	}
 }
 
 // Get attributes of the node in sequential name,value pairs in the slice.
@@ -168,9 +195,9 @@ func (e *Element) GetAttributes() (map[string]string, error) {
 	return e.attributes, nil
 }
 
-// Works like WebDriver's clear(), simply sets the attribute value for input.
+// Works like WebDriver's clear(), simply sets the attribute value for input
 // or clears the value for textarea. This element must be ready so we can
-// properly read the nodeName value
+// properly read the nodeName value.
 func (e *Element) Clear() error {
 	var err error
 
@@ -223,6 +250,7 @@ func (e *Element) SendKeys(text string) error {
 	return e.tab.SendKeys(text)
 }
 
+// Returns the dimensions of the element.
 func (e *Element) Dimensions() ([]float64, error) {
 	var points []float64
 	box, err := e.tab.DOM.GetBoxModel(e.id)

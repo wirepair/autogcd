@@ -70,7 +70,7 @@ func TestElementClick(t *testing.T) {
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Log("Got message %v\n", message)
 		if message.Text == "button clicked" {
-			callerTab.StopConsoleMessages()
+			callerTab.StopConsoleMessages(true)
 			wg.Done()
 		}
 	}
@@ -190,7 +190,7 @@ func TestElementSendKeys(t *testing.T) {
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Logf("got message: %v\n", message)
 		if message.Text == "zomgs Test!" {
-			callerTab.StopConsoleMessages()
+			callerTab.StopConsoleMessages(true)
 			wg.Done()
 		}
 
@@ -275,6 +275,68 @@ func TestElementGetEventListeners(t *testing.T) {
 		}
 		t.Logf("script source: %s\n", src)
 	}
+}
+
+func TestElementFrameGetTag(t *testing.T) {
+	var err error
+	var eles []*Element
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	_, err = tab.Navigate(testServerAddr + "iframe.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	eles, err = tab.GetElementsBySelector("iframe")
+	if err != nil {
+		t.Fatalf("error finding input: %s\n", err)
+	}
+	var frame *Element
+	for _, ele := range eles {
+		ele.WaitForReady()
+		t.Logf("%#v\n", ele)
+		if ele.IsFrame() {
+			frame = ele
+			break
+		}
+	}
+	if frame == nil {
+		t.Fatalf("error finding frame element\n")
+	}
+	t.Logf("frameId: %s\n", frame.FrameId())
+	ele, _, err := tab.GetDocumentElementById(frame.FrameId(), "output")
+	if err != nil {
+		t.Fatalf("error finding the div element inside of frame")
+	}
+
+	err = ele.WaitForReady()
+	if err != nil {
+		t.Fatalf("timed out waiting for frame element")
+	}
+
+	tagName, err := ele.GetTagName()
+	if err != nil || tagName != "div" {
+		t.Fatalf("error getting tag name of element inside of frame: %s tag: %s", err, tagName)
+	}
+
+	/*
+		ele.WaitForReady()
+		tagName, err := ele.GetTagName()
+		if err != nil {
+			t.Fatalf("Error getting tagname!")
+		}
+		t.Logf("ele ready: tagname: " + tagName)
+		if tagName != "input" {
+			t.Fatalf("Error expected tagname to be input got: %s\n", tagName)
+		}
+	*/
+
 }
 
 func TestGoogleSearch(t *testing.T) {

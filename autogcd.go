@@ -1,3 +1,19 @@
+/*
+Autogcd - An automation interface for https://github.com/wirepair/gcd. Contains most functionality
+found in WebDriver and extends it to offer more low level features. This library was built due to
+WebDriver/Chromedriver also using the debugger service. Since it is not possible to attach to a Page's
+debugger twice, automating a custom extension with WebDriver turned out to not be possible.
+
+The Chrome Debugger by nature is far more asynchronous than WebDriver. It is possible to work with
+elements even though the debugger has not yet notified us of their existence. To deal with this, Elements
+can be in multiple states; Ready, NotReady or Invalid. Only certain features are available when an Element
+is in a Ready state. If an Element is Invalid, it should no longer be used and references to it should be
+discarded.
+
+Dealing with frames is also different than WebDriver. There is no SwitchToFrame, you simply pass in the frameId
+to certain methods that require it. Internally a list of Documents is stored and will look up the element provided
+a valid frameId is supplied.
+*/
 package autogcd
 
 import (
@@ -12,6 +28,7 @@ type AutoGcd struct {
 	tabs     map[string]*Tab
 }
 
+// Creates a new AutoGcd based off the provided settings.
 func NewAutoGcd(settings *Settings) *AutoGcd {
 	auto := &AutoGcd{settings: settings}
 	auto.tabLock = &sync.RWMutex{}
@@ -33,6 +50,7 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 	return auto
 }
 
+// Starts Google Chrome with debugging enabled.
 func (auto *AutoGcd) Start() error {
 	var tabs []*gcd.ChromeTarget
 	var err error
@@ -51,6 +69,7 @@ func (auto *AutoGcd) Start() error {
 	return nil
 }
 
+// Closes all tabs and shuts down the browser.
 func (auto *AutoGcd) Shutdown() {
 	auto.tabLock.Lock()
 	for _, tab := range auto.tabs {
@@ -110,6 +129,7 @@ func (auto *AutoGcd) NewTab() (*Tab, error) {
 	return tab, nil
 }
 
+// Closes the provided tab.
 func (auto *AutoGcd) CloseTab(tab *Tab) error {
 	if err := auto.debugger.CloseTab(tab.ChromeTarget); err != nil {
 		return err
@@ -121,6 +141,7 @@ func (auto *AutoGcd) CloseTab(tab *Tab) error {
 	return nil
 }
 
+// Closes a tab based off the tab id.
 func (auto *AutoGcd) CloseTabById(id string) error {
 	tab, err := auto.tabById(id)
 	if err != nil {
@@ -130,6 +151,7 @@ func (auto *AutoGcd) CloseTabById(id string) error {
 	return nil
 }
 
+// Finds the tab by its id.
 func (auto *AutoGcd) tabById(id string) (*Tab, error) {
 	auto.tabLock.RLock()
 	tab := auto.tabs[id]

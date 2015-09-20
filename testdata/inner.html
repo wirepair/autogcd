@@ -1,7 +1,6 @@
-<!DOCTYPE html>
 <html>
 <head>
-<title>Clickjack + XSS</title>
+<title>inner frame document modification</title>
 <script>
 window.addEventListener('load', function() {
 	var blah = document.createElement("div");
@@ -14,7 +13,6 @@ window.addEventListener('load', function() {
 <body>
 	<iframe id="inner" src="index.html"></iframe>
 	<div id="output">blerp</div>
-<!-- <iframe id="inner" src="http://search.microsoft.com/en-US/search.aspx?q=%22]);alert(1);([%22" width="500" height="2000" scrolling="no" frameborder="none"> -->
 </iframe>
 </body>
 </html>
