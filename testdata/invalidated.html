@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<head>
+<title>document modification</title>
+<script>
+window.addEventListener('load', function() {
+	
+	setTimeout(function() {
+		var parent = document.getElementById('parent');
+		parent.removeChild(document.getElementById('child'));
+	}, 500);
+
+});
+</script>
+</head>
+<body>
+	<div id="parent">
+		<div id="child">blerp</div>
+	</div>
+</iframe>
+</body>
+</html>

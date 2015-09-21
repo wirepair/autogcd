@@ -90,6 +90,17 @@ func (e *Element) FrameId() string {
 	return e.node.FrameId
 }
 
+// Returns the underlying DOMNode for this element.
+func (e *Element) GetDebuggerDOMNode() (*gcdapi.DOMNode, error) {
+	if !e.ready {
+		return nil, &ElementNotReadyErr{}
+	}
+	if e.invalidated {
+		return nil, &InvalidElementErr{}
+	}
+	return e.node, nil
+}
+
 // populate the Element with node data.
 func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.node = node
@@ -144,14 +155,44 @@ func (e *Element) GetNodeType() (int, error) {
 	return e.nodeType, nil
 }
 
+// Returns true if the node is enabled, only makes sense for form controls.
+// Element must be in a ready state.
+func (e *Element) IsEnabled() (bool, error) {
+	if !e.ready {
+		return false, &ElementNotReadyErr{}
+	}
+	disabled, ok := e.attributes["disabled"]
+	// if the attribute doesn't exist, it's enabled.
+	if !ok {
+		return true, nil
+	}
+	if disabled == "true" || disabled == "" {
+		return false, nil
+	}
+	return true, nil
+}
+
 // Returns the CSS Style Text of the element, returns the inline style first
 // and the attribute style second, or error.
-func (e *Element) GetCssStyleText() (string, string, error) {
+func (e *Element) GetCssInlineStyleText() (string, string, error) {
 	inline, attribute, err := e.tab.CSS.GetInlineStylesForNode(e.id)
 	if err != nil {
 		return "", "", err
 	}
 	return inline.CssText, attribute.CssText, nil
+}
+
+// Returns all of the computed css styles in form of name value map.
+func (e *Element) GetComputedCssStyle() (map[string]string, error) {
+	styles, err := e.tab.CSS.GetComputedStyleForNode(e.id)
+	if err != nil {
+		return nil, err
+	}
+	styleMap := make(map[string]string, len(styles))
+	for _, style := range styles {
+		styleMap[style.Name] = style.Value
+	}
+	return styleMap, nil
 }
 
 // Returns event listeners for the element, both static and dynamically bound.
@@ -183,7 +224,7 @@ func (e *Element) WaitForReady() error {
 	}
 }
 
-// Get attributes of the node in sequential name,value pairs in the slice.
+// Get attributes of the node returning a map of name,value pairs.
 func (e *Element) GetAttributes() (map[string]string, error) {
 	attr, err := e.tab.DOM.GetAttributes(e.id)
 	if err != nil {

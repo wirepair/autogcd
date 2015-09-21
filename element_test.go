@@ -324,22 +324,9 @@ func TestElementFrameGetTag(t *testing.T) {
 	if err != nil || tagName != "div" {
 		t.Fatalf("error getting tag name of element inside of frame: %s tag: %s", err, tagName)
 	}
-
-	/*
-		ele.WaitForReady()
-		tagName, err := ele.GetTagName()
-		if err != nil {
-			t.Fatalf("Error getting tagname!")
-		}
-		t.Logf("ele ready: tagname: " + tagName)
-		if tagName != "input" {
-			t.Fatalf("Error expected tagname to be input got: %s\n", tagName)
-		}
-	*/
-
 }
 
-func TestGoogleSearch(t *testing.T) {
+func TestElementInvalidated(t *testing.T) {
 	var err error
 	var ele *Element
 	testAuto := testDefaultStartup(t)
@@ -350,14 +337,24 @@ func TestGoogleSearch(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	_, err = tab.Navigate("https://www.google.com")
+	_, err = tab.Navigate(testServerAddr + "invalidated.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	ele, _, err = tab.GetElementById("lst-ib")
+	//tab.ChromeTarget.DebugEvents(true)
+
+	ele, ready, err := tab.GetElementById("child")
 	if err != nil {
-		t.Fatalf("error finding input: %s %#v\n", err, ele)
+		t.Fatalf("error getting child element: %s\n", err)
 	}
-	ele.SendKeys("gcd\n")
-	time.Sleep(5 * time.Second)
+	if !ready {
+		ele.WaitForReady()
+	}
+	if ele.IsInvalid() {
+		t.Fatalf("error child is already invalid!")
+	}
+	time.Sleep(3 * time.Second)
+	if !ele.IsInvalid() {
+		t.Fatalf("error child is not invalid after it was removed!")
+	}
 }

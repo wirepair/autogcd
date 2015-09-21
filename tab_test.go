@@ -17,8 +17,50 @@ func TestTabNavigate(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate("http://google.com"); err != nil {
+	if _, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
+	}
+}
+
+func TestTabGetCurrentUrl(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, err := tab.Navigate(testServerAddr + "console.html?x=1"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	url, err := tab.GetCurrentUrl()
+	if err != nil {
+		t.Fatalf("error getting url: %s\n", err)
+	}
+	if url != testServerAddr+"console.html?x=1" {
+		t.Fatalf("expected url is different, got: %s\n", url)
+	}
+}
+
+func TestTabGetTitle(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	title, err := tab.GetTitle()
+	if err != nil {
+		t.Fatalf("error getting url: %s\n", err)
+	}
+	if title != "autogcd test" {
+		t.Fatalf("expected title is different, got: %s\n", title)
 	}
 }
 
@@ -49,7 +91,7 @@ func TestTabGetConsoleMessage(t *testing.T) {
 }
 
 func TestTabGetDocument(t *testing.T) {
-	var doc *gcdapi.DOMNode
+	var doc *Element
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
@@ -66,7 +108,7 @@ func TestTabGetDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting doc: %s\n", err)
 	}
-	testPrintNodes(t, doc)
+	testPrintNodes(t, doc.node)
 }
 
 func testPrintNodes(t *testing.T, node *gcdapi.DOMNode) {
@@ -252,12 +294,12 @@ func TestTabEvaluateScript(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	res, _, _, errEval := tab.EvaluateScript("JSON.stringify(document)")
+	res, errEval := tab.EvaluateScript("JSON.stringify(document)")
 	if errEval != nil {
 		t.Fatalf("error evaluating script: %s\n", errEval)
 	}
 	// trigger completion
-	_, _, _, errEval = tab.EvaluateScript("console.log('inject ' + location.href);")
+	_, errEval = tab.EvaluateScript("console.log('inject ' + location.href);")
 	if errEval != nil {
 		t.Fatalf("error evaluating trigger script: %s\n", errEval)
 	}
@@ -368,6 +410,89 @@ func TestTabWindows(t *testing.T) {
 
 	t.Logf("%d unknown tabs found!", len(newTabs)-len(tabs))
 
+}
+
+func TestTabAfterRedirect(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	tab.ChromeTarget.DebugEvents(true)
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	if _, err := tab.Navigate(testServerAddr + "redirect.html"); err != nil {
+		t.Fatalf("error opening first window")
+	}
+
+	url, err := tab.GetCurrentUrl()
+	if err != nil {
+		t.Fatalf("error getting url: %s\n", err)
+	}
+
+	if url != testServerAddr+"redirect.html" {
+		t.Fatalf("url does not match redirect.html got: %s\n", url)
+	}
+
+	oldDoc, err := tab.GetDocument()
+	if err != nil {
+		t.Fatalf("error getting document")
+	}
+
+	ele, _, err := tab.GetElementById("child")
+	if err != nil {
+		t.Fatalf("error getting child element: %s\n", err)
+	}
+
+	err = ele.WaitForReady()
+	if err != nil {
+		t.Fatalf("timed out waiting for element")
+	}
+
+	if ele.IsInvalid() {
+		t.Fatalf("element is invalid before redirect occurred")
+	}
+
+	time.Sleep(2 * time.Second)
+	newUrl, err := tab.GetCurrentUrl()
+	if err != nil {
+		t.Fatalf("error getting url after redirect: %s\n", err)
+	}
+	if newUrl != testServerAddr+"redirect_target.html" {
+		t.Fatalf("url does not match redirect_target.html got: %s\n", newUrl)
+	}
+
+	if !ele.IsInvalid() {
+		t.Fatalf("error element was not invalidated after redirect!")
+	}
+
+	if !oldDoc.IsInvalid() {
+		t.Fatalf("error document was not invalidated after redirect!")
+	}
+
+}
+
+func TestTabFrameRedirect(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	tab.ChromeTarget.DebugEvents(true)
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	if _, err := tab.Navigate(testServerAddr + "frame_redirect.html"); err != nil {
+		t.Fatalf("error opening first window")
+	}
+
+	oldDoc, err := tab.GetDocument()
+	if err != nil {
+		t.Fatalf("error getting document")
+	}
+
+	time.Sleep(2 * time.Second)
+
+	if oldDoc.IsInvalid() {
+		t.Fatalf("error document was invalidated after frame redirect!")
+	}
 }
 
 func testTimeout(t *testing.T, duration time.Duration) {

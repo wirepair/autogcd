@@ -36,6 +36,17 @@ func (e *InvalidTabErr) Error() string {
 	return "Unable to access tab: " + e.Message
 }
 
+// returned
+type ScriptEvaluationErr struct {
+	Message          string
+	ExceptionText    string
+	ExceptionDetails *gcdapi.DebuggerExceptionDetails
+}
+
+func (e *ScriptEvaluationErr) Error() string {
+	return e.Message + " " + e.ExceptionText
+}
+
 // When Tab.Navigate has timed out
 type NavigationTimeoutErr struct {
 	Message string
@@ -70,8 +81,10 @@ type Tab struct {
 	docMutex          *sync.RWMutex
 	Documents         map[string]*Element // "top" for top document, frameIds for frame documents
 	nodeChange        chan *NodeChangeEvent
+	navigationCh      chan int
 	navigationTimeout time.Duration
 	elementTimeout    time.Duration
+	isNavigating      bool
 }
 
 func NewTab(target *gcd.ChromeTarget) *Tab {
@@ -82,7 +95,9 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.Documents = make(map[string]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
 	t.navigationTimeout = 30 // default 30 seconds for timeout
-	t.elementTimeout = 5     // default 5 seconds for waiting for element.
+	t.isNavigating = false
+	t.navigationCh = make(chan int, 1) // for signaling navigation complete
+	t.elementTimeout = 5               // default 5 seconds for waiting for element.
 	t.Page.Enable()
 	t.DOM.Enable()
 	t.Console.Enable()
@@ -106,20 +121,20 @@ func (t *Tab) SetElementWaitTimeout(timeout time.Duration) {
 // Updates the list of elements
 // Returns the frameId of the Tab that this navigation occured on.
 func (t *Tab) Navigate(url string) (string, error) {
-	//var doc *gcdapi.DOMNode
-	resp := make(chan int, 1)
-	t.Subscribe("Page.loadEventFired", t.defaultLoadFired(resp))
+
+	t.isNavigating = true
 	frameId, err := t.Page.Navigate(url)
 	timeoutTimer := time.NewTimer(t.navigationTimeout * time.Second)
 	if err != nil {
 		return "", err
 	}
 	select {
-	case <-resp:
+	case <-t.navigationCh:
 		timeoutTimer.Stop()
 	case <-timeoutTimer.C:
 		return "", &NavigationTimeoutErr{Message: url}
 	}
+	t.isNavigating = false
 	// update the list of elements
 	_, err = t.GetDocument()
 	if err != nil {
@@ -130,13 +145,16 @@ func (t *Tab) Navigate(url string) (string, error) {
 }
 
 // Gets the document and updates our list of Elements in the event they've changed.
-func (t *Tab) GetDocument() (*gcdapi.DOMNode, error) {
+func (t *Tab) GetDocument() (*Element, error) {
 	doc, err := t.DOM.GetDocument()
 	if err != nil {
 		return nil, err
 	}
 	t.addDocumentNodes(doc)
-	return doc, nil
+	t.docMutex.RLock()
+	eleDoc := t.Documents["top"]
+	t.docMutex.RUnlock()
+	return eleDoc, nil
 }
 
 // Returns the documents source, as visible, if docId is empty, returns top document.
@@ -363,14 +381,21 @@ func (t *Tab) RemoveScriptFromOnLoad(scriptId string) error {
 }
 
 // Evaluates script in the global context.
-func (t *Tab) EvaluateScript(scriptSource string) (*gcdapi.RuntimeRemoteObject, bool, *gcdapi.DebuggerExceptionDetails, error) {
+func (t *Tab) EvaluateScript(scriptSource string) (*gcdapi.RuntimeRemoteObject, error) {
 	objectGroup := "autogcd"
 	includeCommandLineAPI := true
 	doNotPauseOnExceptionsAndMuteConsole := true
 	contextId := 0
 	returnByValue := true
 	generatePreview := true
-	return overridenRuntimeEvaluate(t.ChromeTarget, scriptSource, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, contextId, returnByValue, generatePreview)
+	rro, thrown, exception, err := overridenRuntimeEvaluate(t.ChromeTarget, scriptSource, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, contextId, returnByValue, generatePreview)
+	if err != nil {
+		return nil, err
+	}
+	if thrown || exception != nil {
+		return nil, &ScriptEvaluationErr{Message: "error executing script: ", ExceptionText: exception.Text, ExceptionDetails: exception}
+	}
+	return rro, nil
 }
 
 // Takes a screenshot of the currently loaded page (only the dimensions visible in browser window)
@@ -389,11 +414,25 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 
 // Returns the current url of the top level document
 func (t *Tab) GetCurrentUrl() (string, error) {
-	doc, err := t.GetDocumentByDocId("top")
+	return t.GetDocumentCurrentUrl("top")
+}
+
+// Returns the current url of the provided frameId
+func (t *Tab) GetDocumentCurrentUrl(frameId string) (string, error) {
+	doc, err := t.GetDocumentByDocId(frameId)
 	if err != nil {
 		return "", err
 	}
+	log.Printf("%#v\n", doc.node)
 	return doc.node.DocumentURL, nil
+}
+
+func (t *Tab) GetTitle() (string, error) {
+	resp, err := t.EvaluateScript("window.top.document.title")
+	if err != nil {
+		return "", err
+	}
+	return resp.Value, nil
 }
 
 // Returns the cookies from the tab.
@@ -559,21 +598,6 @@ func (t *Tab) defaultConsoleMessageAdded(fn ConsoleMessageFunc) GcdResponseFunc 
 			// call the callback handler
 			fn(t, message.Params.Message)
 		}
-
-	}
-}
-
-// our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
-func (t *Tab) defaultLoadFired(resp chan<- int) GcdResponseFunc {
-	return func(target *gcd.ChromeTarget, payload []byte) {
-		target.Unsubscribe("Page.loadEventFired")
-		header := &gcdapi.PageLoadEventFiredEvent{}
-		err := json.Unmarshal(payload, header)
-		if err != nil {
-			resp <- -1
-		}
-		resp <- 0
-		close(resp)
 	}
 }
 
@@ -587,6 +611,7 @@ func recursivelyGetFrameResource(resourceMap map[string]string, resource *gcdapi
 
 func (t *Tab) subscribeNodeChanges() {
 	// see tab_subscribers
+	t.subscribeLoadEvent()
 	t.subscribeSetChildNodes()
 	t.subscribeAttributeModified()
 	t.subscribeAttributeRemoved()
@@ -611,44 +636,41 @@ func (t *Tab) listenNodeChanges() {
 func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 	switch change.EventType {
 	case DocumentUpdatedEvent:
-		log.Println("documentUpdated, deleting all nodes")
+		log.Printf("document updated event!")
 		t.eleMutex.Lock()
+		for _, ele := range t.Elements {
+			ele.setInvalidated(true)
+		}
 		t.Elements = make(map[int]*Element)
 		t.eleMutex.Unlock()
+
 		t.docMutex.Lock()
 		t.Documents = make(map[string]*Element)
 		t.docMutex.Unlock()
 	case SetChildNodesEvent:
-		log.Println("SetChildNodesEvent, adding new nodes")
 		t.createNewNodes(change.Nodes)
 	case AttributeModifiedEvent:
-		log.Println("attribute modified")
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateAttribute(change.Name, change.Value)
 		}
 	case AttributeRemovedEvent:
-		log.Println("attribute removed")
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.removeAttribute(change.Name)
 		}
 	case CharacterDataModifiedEvent:
-		log.Println("character data updated")
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateCharacterData(change.CharacterData)
 		}
 	case ChildNodeCountUpdatedEvent:
-		log.Println("character data updated")
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateChildNodeCount(change.ChildNodeCount)
 		}
 	case ChildNodeInsertedEvent:
-		log.Println("child node inserted")
 		ele := t.knownElement(change.Node)
 		t.eleMutex.Lock()
 		t.Elements[change.NodeId] = ele
 		t.eleMutex.Unlock()
 	case ChildNodeRemovedEvent:
-		log.Println("child node removed, deleting from list")
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.setInvalidated(true)
 		}

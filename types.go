@@ -56,13 +56,6 @@ type NetworkResponse struct {
 
 type StorageEventType uint16
 
-const (
-	StorageItemsCleared StorageEventType = 0x0
-	StorageItemRemoved  StorageEventType = 0x01
-	StorageItemAdded    StorageEventType = 0x02
-	StorageItemUpdated  StorageEventType = 0x03
-)
-
 type StorageEvent struct {
 	IsLocalStorage bool
 	SecurityOrigin string

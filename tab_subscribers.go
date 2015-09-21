@@ -6,6 +6,24 @@ import (
 	"github.com/wirepair/gcd/gcdapi"
 )
 
+// our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
+// If we are not navigating that means a redirect occurred and we need to update our document.
+func (t *Tab) subscribeLoadEvent() {
+	t.Subscribe("Page.loadEventFired", func(target *gcd.ChromeTarget, payload []byte) {
+		header := &gcdapi.PageLoadEventFiredEvent{}
+		err := json.Unmarshal(payload, header)
+		if t.isNavigating {
+			if err != nil {
+				t.navigationCh <- -1
+			}
+			t.navigationCh <- 0
+			return
+		}
+		// we are not navigating, this means a redirect occurred.
+		t.GetDocument() // force update of document/elements
+	})
+}
+
 func (t *Tab) subscribeSetChildNodes() {
 	// new nodes
 	t.Subscribe("DOM.setChildNodes", func(target *gcd.ChromeTarget, payload []byte) {
@@ -19,7 +37,7 @@ func (t *Tab) subscribeSetChildNodes() {
 }
 
 func (t *Tab) subscribeAttributeModified() {
-	t.Subscribe("DOM.attributeModifiedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("DOM.attributeModified", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.DOMAttributeModifiedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -30,7 +48,7 @@ func (t *Tab) subscribeAttributeModified() {
 }
 
 func (t *Tab) subscribeAttributeRemoved() {
-	t.Subscribe("DOM.attributeRemovedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("DOM.attributeRemoved", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.DOMAttributeRemovedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -40,7 +58,7 @@ func (t *Tab) subscribeAttributeRemoved() {
 	})
 }
 func (t *Tab) subscribeCharacterDataModified() {
-	t.Subscribe("DOM.characterDataModifiedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("DOM.characterDataModified", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.DOMCharacterDataModifiedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -50,7 +68,7 @@ func (t *Tab) subscribeCharacterDataModified() {
 	})
 }
 func (t *Tab) subscribeChildNodeCountUpdated() {
-	t.Subscribe("DOM.childNodeCountUpdatedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("DOM.childNodeCountUpdated", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.DOMChildNodeCountUpdatedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -60,7 +78,7 @@ func (t *Tab) subscribeChildNodeCountUpdated() {
 	})
 }
 func (t *Tab) subscribeChildNodeInserted() {
-	t.Subscribe("DOM.childNodeInsertedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("DOM.childNodeInserted", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.DOMChildNodeInsertedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -70,7 +88,7 @@ func (t *Tab) subscribeChildNodeInserted() {
 	})
 }
 func (t *Tab) subscribeChildNodeRemoved() {
-	t.Subscribe("DOM.childNodeRemovedEvent", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("DOM.childNodeRemoved", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.DOMChildNodeRemovedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
