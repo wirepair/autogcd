@@ -452,7 +452,7 @@ func TestTabAfterRedirect(t *testing.T) {
 		t.Fatalf("element is invalid before redirect occurred")
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(4 * time.Second)
 	newUrl, err := tab.GetCurrentUrl()
 	if err != nil {
 		t.Fatalf("error getting url after redirect: %s\n", err)
@@ -479,20 +479,48 @@ func TestTabFrameRedirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	if _, err := tab.Navigate(testServerAddr + "frame_redirect.html"); err != nil {
+	if _, err := tab.Navigate(testServerAddr + "frame_top.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
+	time.Sleep(10 * time.Second)
 
-	oldDoc, err := tab.GetDocument()
-	if err != nil {
-		t.Fatalf("error getting document")
-	}
+	/*
+		oldDoc, err := tab.GetDocument()
+		if err != nil {
+			t.Fatalf("error getting document")
+		}
 
-	time.Sleep(2 * time.Second)
+		time.Sleep(4 * time.Second)
 
-	if oldDoc.IsInvalid() {
-		t.Fatalf("error document was invalidated after frame redirect!")
-	}
+		if oldDoc.IsInvalid() {
+			t.Fatalf("error document was invalidated after frame redirect!")
+		}
+
+		frames, err := tab.GetFrameResources()
+		if err != nil {
+			t.Fatalf("error getting frame resources: %s\n", err)
+		}
+		var frameId string
+		for k, v := range frames {
+			t.Logf("frameId: %s frame: %#v\n", k, v)
+			if k != "top" {
+				frameId = k
+			}
+		}
+		childEle, _, err := tab.GetDocumentElementById(frameId, "child")
+		if err != nil {
+			t.Fatalf("error getting child element in frame")
+		}
+		childEle.WaitForReady()
+		attr, err := childEle.GetAttributes()
+		if err != nil {
+			t.Fatalf("error getting child attributes")
+		}
+		t.Logf("%#v\n", attr)
+		for k, v := range tab.Documents {
+			t.Logf("frameId: %s ele: %#v\n", k, v)
+		}
+	*/
 }
 
 func testTimeout(t *testing.T, duration time.Duration) {

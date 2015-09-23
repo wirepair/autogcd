@@ -76,11 +76,12 @@ type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 
 type Tab struct {
 	*gcd.ChromeTarget
-	eleMutex          *sync.RWMutex
-	Elements          map[int]*Element
-	docMutex          *sync.RWMutex
-	Documents         map[string]*Element // "top" for top document, frameIds for frame documents
+
+	frameMutex        *sync.RWMutex
+	Frames            map[string]*Frame
+	topFrame          string // the current top frame
 	nodeChange        chan *NodeChangeEvent
+	newFrameCh        chan *Frame
 	navigationCh      chan int
 	navigationTimeout time.Duration
 	elementTimeout    time.Duration
@@ -91,8 +92,8 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t := &Tab{ChromeTarget: target}
 	t.eleMutex = &sync.RWMutex{}
 	t.Elements = make(map[int]*Element)
-	t.docMutex = &sync.RWMutex{}
-	t.Documents = make(map[string]*Element)
+	t.frameMutex = &sync.RWMutex{}
+	t.Frames = make(map[string]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
 	t.navigationTimeout = 30 // default 30 seconds for timeout
 	t.isNavigating = false
@@ -103,7 +104,7 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.Console.Enable()
 	t.Debugger.Enable()
 	t.subscribeNodeChanges()
-	go t.listenNodeChanges()
+	go t.listenDOMChanges()
 	return t
 }
 
@@ -135,12 +136,13 @@ func (t *Tab) Navigate(url string) (string, error) {
 		return "", &NavigationTimeoutErr{Message: url}
 	}
 	t.isNavigating = false
+	t.topFrame = frameId
 	// update the list of elements
-	_, err = t.GetDocument()
+	doc, err := t.GetDocument()
 	if err != nil {
 		return "", err
 	}
-	//_, err = t.DOM.RequestChildNodes(doc.NodeId, -1)
+
 	return frameId, nil
 }
 
@@ -151,9 +153,9 @@ func (t *Tab) GetDocument() (*Element, error) {
 		return nil, err
 	}
 	t.addDocumentNodes(doc)
-	t.docMutex.RLock()
-	eleDoc := t.Documents["top"]
-	t.docMutex.RUnlock()
+	t.frameMutex.RLock()
+	eleDoc := t.Frames["top"]
+	t.frameMutex.RUnlock()
 	return eleDoc, nil
 }
 
@@ -226,9 +228,9 @@ func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
 // Safely gets a reference to the document from the docId, returns error if
 // it doesn't exist.
 func (t *Tab) GetDocumentByDocId(docId string) (*Element, error) {
-	t.docMutex.RLock()
-	docNode := t.Documents[docId]
-	t.docMutex.RUnlock()
+	t.frameMutex.RLock()
+	docNode := t.Frames[docId]
+	t.frameMutex.RUnlock()
 
 	if docNode == nil {
 		return nil, &InvalidDocIdErr{Id: docId}
@@ -296,6 +298,8 @@ func (t *Tab) Click(x, y int) error {
 	return nil
 }
 
+// Sends keystrokes to whatever is focused, best called from Element.SendKeys which will
+// try to focus on the element first. Use \n for Enter, \b for backspace or \t for Tab.
 func (t *Tab) SendKeys(text string) error {
 	theType := "char"
 	modifiers := 0
@@ -481,9 +485,6 @@ func (t *Tab) ListenNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, r
 
 	if requestHandlerFn != nil {
 		t.Subscribe("Network.requestWillBeSent", func(target *gcd.ChromeTarget, payload []byte) {
-			if target != t.ChromeTarget {
-				log.Printf("got a request for a different target")
-			}
 			message := &gcdapi.NetworkRequestWillBeSentEvent{}
 			if err := json.Unmarshal(payload, message); err == nil {
 				p := message.Params
@@ -519,10 +520,10 @@ func (t *Tab) StopListeningNetwork(shouldDisable bool) error {
 }
 
 // Listens for storage events, storageFn should switch on type of cleared, removed, added or updated.
-// cleared holds IsLocalStorage and SecurityOrigin values only
-// removed contains above plus Key
-// added contains above plus NewValue
-// updated contains above plus OldValue
+// cleared holds IsLocalStorage and SecurityOrigin values only.
+// removed contains above plus Key.
+// added contains above plus NewValue.
+// updated contains above plus OldValue.
 func (t *Tab) ListenStorageEvents(storageFn StorageFunc) error {
 	_, err := t.DOMStorage.Enable()
 	if err != nil {
@@ -610,7 +611,7 @@ func recursivelyGetFrameResource(resourceMap map[string]string, resource *gcdapi
 }
 
 func (t *Tab) subscribeNodeChanges() {
-	// see tab_subscribers
+	// see tab_subscribers.go
 	t.subscribeLoadEvent()
 	t.subscribeSetChildNodes()
 	t.subscribeAttributeModified()
@@ -624,29 +625,27 @@ func (t *Tab) subscribeNodeChanges() {
 	t.subscribeDocumentUpdated()
 }
 
-func (t *Tab) listenNodeChanges() {
+func (t *Tab) listenDOMChanges() {
 	for {
 		select {
 		case nodeChangeEvent := <-t.nodeChange:
 			t.handleNodeChange(nodeChangeEvent)
+		case newFrameEvent := <-t.newFrameCh:
+			t.handleNewFrame(newFrameEvent)
 		}
 	}
+}
+
+func (t *Tab) handleNewFrame(newFrame *Frame) {
+	t.frameMutex.Lock()
+	t.Frames[newFrame.frameId] = newFrame
+	t.frameMutex.Unlock()
 }
 
 func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 	switch change.EventType {
 	case DocumentUpdatedEvent:
-		log.Printf("document updated event!")
-		t.eleMutex.Lock()
-		for _, ele := range t.Elements {
-			ele.setInvalidated(true)
-		}
-		t.Elements = make(map[int]*Element)
-		t.eleMutex.Unlock()
-
-		t.docMutex.Lock()
-		t.Documents = make(map[string]*Element)
-		t.docMutex.Unlock()
+		// do nothing, this event doesn't tell us which doc
 	case SetChildNodesEvent:
 		t.createNewNodes(change.Nodes)
 	case AttributeModifiedEvent:
@@ -671,7 +670,13 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 		t.Elements[change.NodeId] = ele
 		t.eleMutex.Unlock()
 	case ChildNodeRemovedEvent:
+
 		if ele, ok := t.getElement(change.NodeId); ok {
+			log.Printf("node removed, id %d\n", change.NodeId)
+			if ele.IsReady() {
+				tag, _ := ele.GetTagName()
+				log.Printf("node tag: %s\n", tag)
+			}
 			ele.setInvalidated(true)
 		}
 		t.eleMutex.Lock()
@@ -706,10 +711,11 @@ func (t *Tab) createNewNodes(nodes []*gcdapi.DOMNode) {
 		t.eleMutex.Unlock()
 
 		if newNode.FrameId != "" {
+			log.Printf("got new frame! %s\n", newNode.FrameId)
 			newDoc := t.knownElement(newNode.ContentDocument)
-			t.docMutex.Lock()
-			t.Documents[newNode.FrameId] = newDoc
-			t.docMutex.Unlock()
+			t.frameMutex.Lock()
+			t.Frames[newNode.FrameId] = newDoc
+			t.frameMutex.Unlock()
 		}
 
 		t.createNewNodes(newNode.Children)
@@ -729,9 +735,10 @@ func (t *Tab) addDocumentNodes(doc *gcdapi.DOMNode) {
 
 	newEle := t.knownElement(doc)
 	// add the document to our list of documents
-	t.docMutex.Lock()
-	t.Documents["top"] = newEle
-	t.docMutex.Unlock()
+	t.frameMutex.Lock()
+	log.Printf("adding doc node: %#v\n", doc)
+	t.Frames["top"] = newEle
+	t.frameMutex.Unlock()
 
 	t.eleMutex.Lock()
 	t.Elements[doc.NodeId] = newEle

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
+	"log"
 )
 
 // our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
@@ -24,9 +25,22 @@ func (t *Tab) subscribeLoadEvent() {
 	})
 }
 
+func (t *Tab) subscribeFrameNavigated() {
+	t.Subscribe("Page.frameNavigated", func(target *gcd.ChromeTarget, payload []byte) {
+		header := &gcdapi.PageFrameNavigatedEvent{}
+		err := json.Unmarshal(payload, header)
+		if err == nil {
+			fr := header.Params.Frame
+			frame := newFrame(t, fr.Id, fr.ParentId, fr.Url, fr.MimeType, fr.Name)
+			t.newFrameCh <- frame
+		}
+	})
+}
+
 func (t *Tab) subscribeSetChildNodes() {
 	// new nodes
 	t.Subscribe("DOM.setChildNodes", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("setChildNodes: %s\n", string(payload))
 		header := &gcdapi.DOMSetChildNodesEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -79,6 +93,7 @@ func (t *Tab) subscribeChildNodeCountUpdated() {
 }
 func (t *Tab) subscribeChildNodeInserted() {
 	t.Subscribe("DOM.childNodeInserted", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("childNodeInserted: %s\n", string(payload))
 		header := &gcdapi.DOMChildNodeInsertedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -113,6 +128,7 @@ func (t *Tab) subscribeInlineStyleInvalidated() {
 func (t *Tab) subscribeDocumentUpdated() {
 	// node ids are no longer valid
 	t.Subscribe("DOM.documentUpdated", func(target *gcd.ChromeTarget, payload []byte) {
+		log.Printf("%s\n", string(payload))
 		t.nodeChange <- &NodeChangeEvent{EventType: DocumentUpdatedEvent}
 	})
 }
