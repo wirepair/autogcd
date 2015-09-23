@@ -3,6 +3,7 @@ package autogcd
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
 	"log"
@@ -16,15 +17,7 @@ type ElementNotFoundErr struct {
 }
 
 func (e *ElementNotFoundErr) Error() string {
-	return "Unable to find element: " + e.Message
-}
-
-type InvalidDocIdErr struct {
-	Id string
-}
-
-func (e *InvalidDocIdErr) Error() string {
-	return "Document Id: " + e.Id + " not found."
+	return "Unable to find element " + e.Message
 }
 
 // When we are unable to access a tab
@@ -76,12 +69,10 @@ type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 
 type Tab struct {
 	*gcd.ChromeTarget
-
-	frameMutex        *sync.RWMutex
-	Frames            map[string]*Frame
-	topFrame          string // the current top frame
+	eleMutex          *sync.RWMutex
+	Elements          map[int]*Element
+	topNodeId         int // the nodeId of the top level #document
 	nodeChange        chan *NodeChangeEvent
-	newFrameCh        chan *Frame
 	navigationCh      chan int
 	navigationTimeout time.Duration
 	elementTimeout    time.Duration
@@ -92,8 +83,6 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t := &Tab{ChromeTarget: target}
 	t.eleMutex = &sync.RWMutex{}
 	t.Elements = make(map[int]*Element)
-	t.frameMutex = &sync.RWMutex{}
-	t.Frames = make(map[string]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
 	t.navigationTimeout = 30 // default 30 seconds for timeout
 	t.isNavigating = false
@@ -136,14 +125,20 @@ func (t *Tab) Navigate(url string) (string, error) {
 		return "", &NavigationTimeoutErr{Message: url}
 	}
 	t.isNavigating = false
-	t.topFrame = frameId
+	log.Printf("navigation complete")
 	// update the list of elements
-	doc, err := t.GetDocument()
+	_, err = t.GetDocument()
 	if err != nil {
 		return "", err
 	}
 
+	log.Printf("getdoc complete")
 	return frameId, nil
+}
+
+// Returns the source of a script by its scriptId.
+func (t *Tab) GetScriptSource(scriptId string) (string, error) {
+	return t.Debugger.GetScriptSource(scriptId)
 }
 
 // Gets the document and updates our list of Elements in the event they've changed.
@@ -152,28 +147,10 @@ func (t *Tab) GetDocument() (*Element, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.addDocumentNodes(doc)
-	t.frameMutex.RLock()
-	eleDoc := t.Frames["top"]
-	t.frameMutex.RUnlock()
+	t.topNodeId = doc.NodeId
+	t.addNodes(doc)
+	eleDoc, _ := t.getElement(doc.NodeId)
 	return eleDoc, nil
-}
-
-// Returns the documents source, as visible, if docId is empty, returns top document.
-func (t *Tab) GetPageSource(docId string) (string, error) {
-	if docId == "" {
-		docId = "top"
-	}
-	doc, err := t.GetDocumentByDocId(docId)
-	if err != nil {
-		return "", err
-	}
-	return t.DOM.GetOuterHTML(doc.id)
-}
-
-// Returns the source of a script by its scriptId.
-func (t *Tab) GetScriptSource(scriptId string) (string, error) {
-	return t.Debugger.GetScriptSource(scriptId)
 }
 
 // Returns either an element from our list of ready/known nodeIds or a new un-ready element
@@ -198,21 +175,21 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 // Returns the element by searching the top level document for an element with attributeId
 // Does not work on frames.
 func (t *Tab) GetElementById(attributeId string) (*Element, bool, error) {
-	return t.GetDocumentElementById("top", attributeId)
+	return t.GetDocumentElementById(t.topNodeId, attributeId)
 }
 
-func (t *Tab) GetDocumentElementById(docId, attributeId string) (*Element, bool, error) {
+//
+func (t *Tab) GetDocumentElementById(docNodeId int, attributeId string) (*Element, bool, error) {
 	var err error
-	var nodeId int
 
-	docNode, err := t.GetDocumentByDocId(docId)
-	if err != nil {
-		return nil, false, err
+	docNode, ok := t.getElement(docNodeId)
+	if !ok {
+		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
 	}
 
 	selector := "#" + attributeId
 
-	nodeId, err = t.DOM.QuerySelector(docNode.id, selector)
+	nodeId, err := t.DOM.QuerySelector(docNode.id, selector)
 	if err != nil {
 		return nil, false, err
 	}
@@ -222,28 +199,15 @@ func (t *Tab) GetDocumentElementById(docId, attributeId string) (*Element, bool,
 
 // Get all Elements that match a selector from the top level document
 func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
-	return t.GetDocumentElementsBySelector("top", selector)
+	return t.GetDocumentElementsBySelector(t.topNodeId, selector)
 }
 
-// Safely gets a reference to the document from the docId, returns error if
-// it doesn't exist.
-func (t *Tab) GetDocumentByDocId(docId string) (*Element, error) {
-	t.frameMutex.RLock()
-	docNode := t.Frames[docId]
-	t.frameMutex.RUnlock()
-
-	if docNode == nil {
-		return nil, &InvalidDocIdErr{Id: docId}
+func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*Element, error) {
+	docNode, ok := t.getElement(docNodeId)
+	if !ok {
+		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
 	}
-	return docNode, nil
-}
-
-func (t *Tab) GetDocumentElementsBySelector(docId, selector string) ([]*Element, error) {
-	docNode, err := t.GetDocumentByDocId(docId)
-	if err != nil {
-		return nil, err
-	}
-
+	log.Printf("docNode.id: %d\n", docNode.id)
 	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.id, selector)
 	if errQuery != nil {
 		return nil, errQuery
@@ -256,6 +220,32 @@ func (t *Tab) GetDocumentElementsBySelector(docId, selector string) ([]*Element,
 	}
 
 	return elements, nil
+}
+
+// Returns the documents source, as visible, if docId is 0, returns top document source.
+func (t *Tab) GetPageSource(docNodeId int) (string, error) {
+	if docNodeId == 0 {
+		docNodeId = t.topNodeId
+	}
+	doc, ok := t.getElement(docNodeId)
+	if !ok {
+		return "", &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
+	}
+	return t.DOM.GetOuterHTML(doc.id)
+}
+
+// Returns the current url of the top level document
+func (t *Tab) GetCurrentUrl() (string, error) {
+	return t.GetDocumentCurrentUrl(t.topNodeId)
+}
+
+// Returns the current url of the provided docNodeId
+func (t *Tab) GetDocumentCurrentUrl(docNodeId int) (string, error) {
+	docNode, ok := t.getElement(docNodeId)
+	if !ok {
+		return "", &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+	}
+	return docNode.node.DocumentURL, nil
 }
 
 // Gets all frame ids and urls from the top level document.
@@ -416,27 +406,25 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 	return imgBytes, nil
 }
 
-// Returns the current url of the top level document
-func (t *Tab) GetCurrentUrl() (string, error) {
-	return t.GetDocumentCurrentUrl("top")
-}
-
-// Returns the current url of the provided frameId
-func (t *Tab) GetDocumentCurrentUrl(frameId string) (string, error) {
-	doc, err := t.GetDocumentByDocId(frameId)
-	if err != nil {
-		return "", err
-	}
-	log.Printf("%#v\n", doc.node)
-	return doc.node.DocumentURL, nil
-}
-
 func (t *Tab) GetTitle() (string, error) {
 	resp, err := t.EvaluateScript("window.top.document.title")
 	if err != nil {
 		return "", err
 	}
 	return resp.Value, nil
+}
+
+// Returns all documents as elements that are known.
+func (t *Tab) GetFrameDocuments() []*Element {
+	frames := make([]*Element, 0)
+	t.eleMutex.RLock()
+	for _, ele := range t.Elements {
+		if ok, _ := ele.IsDocument(); ok {
+			frames = append(frames, ele)
+		}
+	}
+	t.eleMutex.RUnlock()
+	return frames
 }
 
 // Returns the cookies from the tab.
@@ -630,24 +618,24 @@ func (t *Tab) listenDOMChanges() {
 		select {
 		case nodeChangeEvent := <-t.nodeChange:
 			t.handleNodeChange(nodeChangeEvent)
-		case newFrameEvent := <-t.newFrameCh:
-			t.handleNewFrame(newFrameEvent)
 		}
 	}
-}
-
-func (t *Tab) handleNewFrame(newFrame *Frame) {
-	t.frameMutex.Lock()
-	t.Frames[newFrame.frameId] = newFrame
-	t.frameMutex.Unlock()
 }
 
 func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 	switch change.EventType {
 	case DocumentUpdatedEvent:
-		// do nothing, this event doesn't tell us which doc
+		t.eleMutex.Lock()
+		for _, ele := range t.Elements {
+			ele.setInvalidated(true)
+		}
+		t.Elements = make(map[int]*Element)
+		t.eleMutex.Unlock()
+		t.documentUpdated()
 	case SetChildNodesEvent:
-		t.createNewNodes(change.Nodes)
+		for _, node := range change.Nodes {
+			t.addNodes(node)
+		}
 	case AttributeModifiedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateAttribute(change.Name, change.Value)
@@ -663,20 +651,15 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 	case ChildNodeCountUpdatedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateChildNodeCount(change.ChildNodeCount)
+			// request the child nodes
+			t.requestChildNodes(change.NodeId, -1)
 		}
 	case ChildNodeInsertedEvent:
-		ele := t.knownElement(change.Node)
-		t.eleMutex.Lock()
-		t.Elements[change.NodeId] = ele
-		t.eleMutex.Unlock()
+		// add node children if it has any
+		t.addNodes(change.Node)
 	case ChildNodeRemovedEvent:
-
 		if ele, ok := t.getElement(change.NodeId); ok {
 			log.Printf("node removed, id %d\n", change.NodeId)
-			if ele.IsReady() {
-				tag, _ := ele.GetTagName()
-				log.Printf("node tag: %s\n", tag)
-			}
 			ele.setInvalidated(true)
 		}
 		t.eleMutex.Lock()
@@ -685,41 +668,27 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 	}
 }
 
+func (t *Tab) documentUpdated() {
+	log.Printf("document updated, refreshed")
+	t.GetDocument()
+}
+
+func (t *Tab) requestChildNodes(nodeId, depth int) {
+	_, err := t.DOM.RequestChildNodes(nodeId, depth)
+	if err != nil {
+		log.Printf("error requesting child nodes: %s\n", err)
+	}
+}
+
 // Called if the element is known about but not yet populated. If it is not
 // known, we create a new element. If it is known we populate it and return it.
-func (t *Tab) knownElement(node *gcdapi.DOMNode) *Element {
+func (t *Tab) nodeToElement(node *gcdapi.DOMNode) *Element {
 	if ele, ok := t.getElement(node.NodeId); ok {
 		ele.populateElement(node)
 		return ele
 	}
 	newEle := newReadyElement(t, node)
 	return newEle
-}
-
-// recursively create new elements off nodes and their children
-// Handle known and unknown elements by calling knownElement prior to
-// adding to our list. If the node is an iframe, we create a new Element from it's
-// ContentDocument and add it to our list of frames. Unlike the Elements map
-// Frames are referenced by FrameIds.
-func (t *Tab) createNewNodes(nodes []*gcdapi.DOMNode) {
-	for _, newNode := range nodes {
-		log.Printf("Adding new Node: %s id: %d\n", newNode.NodeName, newNode.NodeId)
-		newEle := t.knownElement(newNode)
-
-		t.eleMutex.Lock()
-		t.Elements[newNode.NodeId] = newEle
-		t.eleMutex.Unlock()
-
-		if newNode.FrameId != "" {
-			log.Printf("got new frame! %s\n", newNode.FrameId)
-			newDoc := t.knownElement(newNode.ContentDocument)
-			t.frameMutex.Lock()
-			t.Frames[newNode.FrameId] = newDoc
-			t.frameMutex.Unlock()
-		}
-
-		t.createNewNodes(newNode.Children)
-	}
 }
 
 // safely returns the element by looking it up by nodeId
@@ -731,17 +700,44 @@ func (t *Tab) getElement(nodeId int) (*Element, bool) {
 }
 
 // Safely adds the nodes in the document to our list of elements
-func (t *Tab) addDocumentNodes(doc *gcdapi.DOMNode) {
-
-	newEle := t.knownElement(doc)
-	// add the document to our list of documents
-	t.frameMutex.Lock()
-	log.Printf("adding doc node: %#v\n", doc)
-	t.Frames["top"] = newEle
-	t.frameMutex.Unlock()
-
+// iterates over children and contentdocuments (if they exist)
+// Calls requestchild nodes for each node so we can receive setChildNode
+// events for even more nodes
+func (t *Tab) addNodes(node *gcdapi.DOMNode) {
+	newEle := t.nodeToElement(node)
 	t.eleMutex.Lock()
-	t.Elements[doc.NodeId] = newEle
+	t.Elements[newEle.id] = newEle
 	t.eleMutex.Unlock()
-	t.createNewNodes(doc.Children)
+	log.Printf("Added new element, id: %d\n", newEle.id)
+	t.requestChildNodes(newEle.id, -1)
+	if node.Children != nil {
+		// add child nodes
+		for _, v := range node.Children {
+			t.addNodes(v)
+		}
+	}
+	if node.ContentDocument != nil {
+		t.addNodes(node.ContentDocument)
+	}
+
 }
+
+/*
+Places nodes exist and must be created
+setChildNodes:
+[]Nodes
+
+GetDocument:
+domNode
+
+childNodeInserted:
+Node
+
+Each new node found must have RequestChildNodes request with the nodeId
+as well as childNodeCountUpdated
+
+
+// Places nodes must be deleted
+ChildNodeRemovedEvent
+nodeId
+*/

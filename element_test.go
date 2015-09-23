@@ -2,6 +2,7 @@ package autogcd
 
 import (
 	"github.com/wirepair/gcd/gcdapi"
+	"log"
 	"sync"
 	"testing"
 	"time"
@@ -16,25 +17,28 @@ func TestElementDimensions(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr); err != nil {
+	if _, err := tab.Navigate(testServerAddr + "/button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-
-	doc, err := tab.GetElementsBySelector("html")
+	log.Printf("getting buttons")
+	buttons, err := tab.GetElementsBySelector("button")
 	if err != nil {
-		t.Fatalf("error getting html doc elementL %s\n", err)
+		t.Fatalf("error getting buttons %s\n", err)
+	}
+	log.Printf("got buttons")
+	for _, button := range buttons {
+		dimensions, err := button.Dimensions()
+		if err != nil {
+			t.Fatalf("error getting doc dimensions: %s\n", err)
+		}
+
+		x, y, err := centroid(dimensions)
+		if err != nil {
+			t.Fatalf("error getting centroid of doc: %s\n", err)
+		}
+		t.Logf("x: %d y: %d\n", x, y)
 	}
 
-	dimensions, err := doc[0].Dimensions()
-	if err != nil {
-		t.Fatalf("error getting doc dimensions: %s\n", err)
-	}
-
-	x, y, err := centroid(dimensions)
-	if err != nil {
-		t.Fatalf("error getting centroid of doc: %s\n", err)
-	}
-	t.Logf("x: %d y: %d\n", x, y)
 }
 
 func TestElementClick(t *testing.T) {
@@ -117,8 +121,8 @@ func TestElementGetSource(t *testing.T) {
 		t.Fatalf("error getting element source: %s\n", err)
 	}
 
-	if src != "<button id=\"button\"></button>" {
-		t.Fatalf("expected <button id=\"button\"></button> but got: %s\n", src)
+	if src != "<button id=\"button\">click me</button>" {
+		t.Fatalf("expected <button id=\"button\">click me</button> but got: %s\n", src)
 	}
 }
 
@@ -279,7 +283,6 @@ func TestElementGetEventListeners(t *testing.T) {
 
 func TestElementFrameGetTag(t *testing.T) {
 	var err error
-	var eles []*Element
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
@@ -293,26 +296,27 @@ func TestElementFrameGetTag(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	eles, err = tab.GetElementsBySelector("iframe")
-	if err != nil {
-		t.Fatalf("error finding input: %s\n", err)
-	}
-	var frame *Element
-	for _, ele := range eles {
-		ele.WaitForReady()
-		t.Logf("%#v\n", ele)
-		if ele.IsFrame() {
-			frame = ele
-			break
-		}
-	}
-	if frame == nil {
+	frames := tab.GetFrameDocuments()
+
+	if len(frames) < 2 {
 		t.Fatalf("error finding frame element\n")
 	}
-	t.Logf("frameId: %s\n", frame.FrameId())
-	ele, _, err := tab.GetDocumentElementById(frame.FrameId(), "output")
+	t.Logf("got %d frame documents\n", len(frames))
+	var nodeId = -1
+	for _, fr := range frames {
+		url, _ := tab.GetDocumentCurrentUrl(fr.NodeId())
+		if url == testServerAddr+"inner.html" {
+			nodeId = fr.NodeId()
+		}
+		t.Logf("frame nodeid %d url: %s\n", fr.NodeId(), url)
+	}
+	if nodeId == -1 {
+		t.Fatalf("error getting inner.html")
+	}
+
+	ele, _, err := tab.GetDocumentElementById(nodeId, "output")
 	if err != nil {
-		t.Fatalf("error finding the div element inside of frame")
+		t.Fatalf("error finding the div element inside of frame: %s\n", err)
 	}
 
 	err = ele.WaitForReady()

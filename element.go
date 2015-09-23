@@ -37,18 +37,18 @@ func (e *InvalidDimensionsErr) Error() string {
 // Certain actions require that the Element be populated (getting nodename/type)
 // If you need this information, wait for IsReady() to return true
 type Element struct {
-	DOMElement
-	tab            *Tab              // reference to the containing tab
-	node           *gcdapi.DOMNode   // the dom node, taken from the document
 	attributes     map[string]string // dom attributes
 	nodeName       string
 	characterData  string
 	childNodeCount int
 	nodeType       int
+	tab            *Tab            // reference to the containing tab
+	node           *gcdapi.DOMNode // the dom node, taken from the document
 	readyGate      chan struct{}
 	id             int  // nodeId in chrome
 	ready          bool // has this elements data been populated by setChildNodes or GetDocument?
 	invalidated    bool // has this node been invalidated (removed?)
+
 }
 
 func newElement(tab *Tab, nodeId int) *Element {
@@ -71,17 +71,6 @@ func newReadyElement(tab *Tab, node *gcdapi.DOMNode) *Element {
 	return e
 }
 
-// Returns the underlying DOMNode for this element.
-func (e *Element) GetDebuggerDOMNode() (*gcdapi.DOMNode, error) {
-	if !e.ready {
-		return nil, &ElementNotReadyErr{}
-	}
-	if e.invalidated {
-		return nil, &InvalidElementErr{}
-	}
-	return e.node, nil
-}
-
 // populate the Element with node data.
 func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.node = node
@@ -93,6 +82,81 @@ func (e *Element) populateElement(node *gcdapi.DOMNode) {
 		close(e.readyGate)
 	}
 	e.ready = true
+}
+
+// Has the Chrome Debugger notified us of this Elements data yet?
+func (e *Element) IsReady() bool {
+	return (e.ready && !e.invalidated)
+}
+
+// Has the debugger invalidated (removed) the element from the DOM?
+func (e *Element) IsInvalid() bool {
+	return e.invalidated
+}
+
+// The element has become invalid.
+func (e *Element) setInvalidated(invalid bool) {
+	e.invalidated = invalid
+}
+
+// If we are ready, just return, if we are not, wait for the readyGate
+// to be closed or for the timeout timer to fird.
+func (e *Element) WaitForReady() error {
+	if e.ready {
+		return nil
+	}
+
+	timeout := time.NewTimer(e.tab.elementTimeout * time.Second)
+	select {
+	case <-e.readyGate:
+		return nil
+	case <-timeout.C:
+		return &ElementNotReadyErr{}
+	}
+}
+
+// Returns the outer html of the element.
+func (e *Element) GetSource() (string, error) {
+	if e.invalidated {
+		return "", &InvalidElementErr{}
+	}
+	return e.tab.DOM.GetOuterHTML(e.id)
+}
+
+func (e *Element) IsDocument() (bool, error) {
+	if !e.ready {
+		return false, &ElementNotReadyErr{}
+	}
+	return (e.nodeType == 9), nil
+}
+
+// Returns the node id of this Element
+func (e *Element) NodeId() int {
+	return e.id
+}
+
+// Returns event listeners for the element, both static and dynamically bound.
+func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error) {
+	rro, err := e.tab.DOM.ResolveNode(e.id, "")
+	if err != nil {
+		return nil, err
+	}
+	eventListeners, err := e.tab.DOMDebugger.GetEventListeners(rro.ObjectId)
+	if err != nil {
+		return nil, err
+	}
+	return eventListeners, nil
+}
+
+// Returns the underlying DOMNode for this element.
+func (e *Element) GetDebuggerDOMNode() (*gcdapi.DOMNode, error) {
+	if !e.ready {
+		return nil, &ElementNotReadyErr{}
+	}
+	if e.invalidated {
+		return nil, &InvalidElementErr{}
+	}
+	return e.node, nil
 }
 
 // updates the attribute name/value pair

@@ -131,7 +131,7 @@ func TestTabGetPageSource(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	src, err = tab.GetPageSource("")
+	src, err = tab.GetPageSource(0)
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
@@ -159,11 +159,12 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error waiting for inner frame element")
 	}
-	if ele.FrameId() == "" {
-		t.Fatalf("frameid is empty!")
+	ok, _ := ele.IsDocument()
+	if !ok {
+		t.Fatalf("error this element is not a document!")
 	}
 
-	src, err = tab.GetPageSource(ele.FrameId())
+	src, err = tab.GetPageSource(ele.NodeId())
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
