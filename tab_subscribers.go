@@ -4,21 +4,13 @@ import (
 	"encoding/json"
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
-	//"log"
 )
 
 // our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
-// If we are not navigating that means a redirect occurred and we need to update our document.
 func (t *Tab) subscribeLoadEvent() {
 	t.Subscribe("Page.loadEventFired", func(target *gcd.ChromeTarget, payload []byte) {
-		header := &gcdapi.PageLoadEventFiredEvent{}
-		err := json.Unmarshal(payload, header)
 		if t.isNavigating {
-			if err != nil {
-				t.navigationCh <- -1
-			}
 			t.navigationCh <- 0
-			return
 		}
 	})
 }
@@ -26,7 +18,6 @@ func (t *Tab) subscribeLoadEvent() {
 func (t *Tab) subscribeSetChildNodes() {
 	// new nodes
 	t.Subscribe("DOM.setChildNodes", func(target *gcd.ChromeTarget, payload []byte) {
-		//log.Printf("setChildNodes: %s\n", string(payload))
 		header := &gcdapi.DOMSetChildNodesEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {

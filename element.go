@@ -1,10 +1,20 @@
 package autogcd
 
 import (
+	"fmt"
 	"github.com/wirepair/gcd/gcdapi"
 	"strings"
 	"time"
 )
+
+type IncorrectElementTypeErr struct {
+	NodeName     string
+	ExpectedName string
+}
+
+func (e *IncorrectElementTypeErr) Error() string {
+	return "incorrect element type expected " + e.ExpectedName + " but this type is " + e.NodeName
+}
 
 type InvalidElementErr struct {
 }
@@ -37,17 +47,16 @@ func (e *InvalidDimensionsErr) Error() string {
 // Certain actions require that the Element be populated (getting nodename/type)
 // If you need this information, wait for IsReady() to return true
 type Element struct {
-	attributes     map[string]string // dom attributes
-	nodeName       string
-	characterData  string
-	childNodeCount int
-	nodeType       int
-	tab            *Tab            // reference to the containing tab
-	node           *gcdapi.DOMNode // the dom node, taken from the document
-	readyGate      chan struct{}
-	id             int  // nodeId in chrome
-	ready          bool // has this elements data been populated by setChildNodes or GetDocument?
-	invalidated    bool // has this node been invalidated (removed?)
+	attributes    map[string]string // dom attributes
+	nodeName      string
+	characterData string
+	nodeType      int
+	tab           *Tab            // reference to the containing tab
+	node          *gcdapi.DOMNode // the dom node, taken from the document
+	readyGate     chan struct{}
+	id            int  // nodeId in chrome
+	ready         bool // has this elements data been populated by setChildNodes or GetDocument?
+	invalidated   bool // has this node been invalidated (removed?)
 
 }
 
@@ -76,7 +85,10 @@ func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.node = node
 	e.nodeType = node.NodeType
 	e.nodeName = strings.ToLower(node.NodeName)
-	e.childNodeCount = node.ChildNodeCount
+	for i := 0; i < len(node.Attributes); i += 2 {
+		e.updateAttribute(node.Attributes[i], node.Attributes[i+1])
+	}
+
 	// close it
 	if !e.ready {
 		close(e.readyGate)
@@ -130,6 +142,30 @@ func (e *Element) IsDocument() (bool, error) {
 	return (e.nodeType == 9), nil
 }
 
+func (e *Element) FrameId() (string, error) {
+	isDoc, err := e.IsDocument()
+	if err != nil {
+		return "", err
+	}
+
+	if !isDoc {
+		return "", nil
+	}
+
+	return e.node.FrameId, nil
+}
+
+// If this element is a frame or iframe, return the ContentDocument node id
+func (e *Element) GetFrameDocumentNodeId() (int, error) {
+	if !e.ready {
+		return -1, &ElementNotReadyErr{}
+	}
+	if e.node.ContentDocument != nil {
+		return e.node.ContentDocument.NodeId, nil
+	}
+	return -1, &IncorrectElementTypeErr{ExpectedName: "(i)frame", NodeName: e.nodeName}
+}
+
 // Returns the node id of this Element
 func (e *Element) NodeId() int {
 	return e.id
@@ -176,7 +212,41 @@ func (e *Element) updateCharacterData(newValue string) {
 
 // updates child node counts.
 func (e *Element) updateChildNodeCount(newValue int) {
-	e.childNodeCount = newValue
+	e.node.ChildNodeCount = newValue
+}
+
+func (e *Element) addChild(child *gcdapi.DOMNode) {
+	e.node.Children = append(e.node.Children, child)
+	e.node.ChildNodeCount++
+}
+
+func (e *Element) addChildren(childNodes []*gcdapi.DOMNode) {
+	for _, child := range childNodes {
+		e.addChild(child)
+	}
+}
+
+func (e *Element) removeChild(child *gcdapi.DOMNode) {
+	childIdx := -1
+	for idx, child := range e.node.Children {
+		if child.NodeId == child.NodeId {
+			childIdx = idx
+			break
+		}
+	}
+	// remove the child via idx from our slice
+	if idx != -1 {
+		e.node.Children = append(e.node.Children[:i], e.node.Children[:i+1]...)
+	}
+	e.node.ChildNodeCount = e.node.ChildNodeCount - 1
+}
+
+func (e *Element) GetChildNodeIds() []int {
+	ids := make([]int, len(e.node.Children))
+	for _, child := range e.node.Children {
+		ids = append(ids, child.NodeId)
+	}
+	return ids
 }
 
 // Returns the tag name (input, div) if the element is in a ready state.
@@ -303,6 +373,23 @@ func (e *Element) Dimensions() ([]float64, error) {
 	}
 	points = box.Content
 	return points, nil
+}
+
+func (e *Element) String() string {
+	output := fmt.Sprintf("NodeId: %d Invalid: %t Ready: %t", e.id, e.invalidated, e.ready)
+	if !e.ready {
+		return output
+	}
+	attrs := ""
+	for key, value := range e.attributes {
+		attrs = attrs + "\t" + key + "=" + value + "\n"
+	}
+	output = fmt.Sprintf("%s NodeType: %d TagName: %s characterData: %s childNodeCount: %d attributes (%d): \n%s", output, e.nodeType, e.nodeName, e.characterData, e.childNodeCount, len(e.attributes), attrs)
+	if e.nodeType == 9 {
+		output = fmt.Sprintf("%s FrameId: %s documentURL: %s\n", output, e.node.FrameId, e.node.DocumentURL)
+	}
+	//output = fmt.Sprintf("%s %#v", output, e.node)
+	return output
 }
 
 // finds the centroid of an arbitrary number of points.

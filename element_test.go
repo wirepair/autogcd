@@ -281,6 +281,9 @@ func TestElementGetEventListeners(t *testing.T) {
 	}
 }
 
+// This test kind of sucks because we can actually get multiple #documents
+// back from the debugger with unique nodeIds. I do not see any way in which
+// you can tell which one is valid.
 func TestElementFrameGetTag(t *testing.T) {
 	var err error
 	testAuto := testDefaultStartup(t)
@@ -298,10 +301,6 @@ func TestElementFrameGetTag(t *testing.T) {
 
 	frames := tab.GetFrameDocuments()
 
-	if len(frames) < 2 {
-		t.Fatalf("error finding frame element\n")
-	}
-	t.Logf("got %d frame documents\n", len(frames))
 	var nodeId = -1
 	for _, fr := range frames {
 		url, _ := tab.GetDocumentCurrentUrl(fr.NodeId())
@@ -316,7 +315,7 @@ func TestElementFrameGetTag(t *testing.T) {
 
 	ele, _, err := tab.GetDocumentElementById(nodeId, "output")
 	if err != nil {
-		t.Fatalf("error finding the div element inside of frame: %s\n", err)
+		t.Fatalf("error finding the div element inside of frame nodeId: %d: %s\n", nodeId, err)
 	}
 
 	err = ele.WaitForReady()
