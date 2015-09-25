@@ -4,43 +4,57 @@ import (
 	"encoding/json"
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
-	"log"
 )
 
 // our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
-// If we are not navigating that means a redirect occurred and we need to update our document.
 func (t *Tab) subscribeLoadEvent() {
 	t.Subscribe("Page.loadEventFired", func(target *gcd.ChromeTarget, payload []byte) {
-		header := &gcdapi.PageLoadEventFiredEvent{}
-		err := json.Unmarshal(payload, header)
 		if t.isNavigating {
-			if err != nil {
-				t.navigationCh <- -1
-			}
 			t.navigationCh <- 0
-			return
 		}
-		// we are not navigating, this means a redirect occurred.
-		t.GetDocument() // force update of document/elements
 	})
 }
 
-func (t *Tab) subscribeFrameNavigated() {
-	t.Subscribe("Page.frameNavigated", func(target *gcd.ChromeTarget, payload []byte) {
-		header := &gcdapi.PageFrameNavigatedEvent{}
-		err := json.Unmarshal(payload, header)
-		if err == nil {
-			fr := header.Params.Frame
-			frame := newFrame(t, fr.Id, fr.ParentId, fr.Url, fr.MimeType, fr.Name)
-			t.newFrameCh <- frame
+func (t *Tab) subscribeFrameLoadingEvent() {
+	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		if t.isNavigating {
+			return
 		}
+		header := &gcdapi.PageFrameStartedLoadingEvent{}
+		err := json.Unmarshal(payload, header)
+		// has the top frame id begun navigating?
+		if err == nil && header.Params.FrameId == t.topFrameId {
+			t.isTransitioning = true
+		}
+	})
+}
+
+func (t *Tab) subscribeFrameFinishedEvent() {
+	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		if t.isNavigating {
+			return
+		}
+		header := &gcdapi.PageFrameStoppedLoadingEvent{}
+		err := json.Unmarshal(payload, header)
+		// has the top frame id begun navigating?
+		if err == nil && header.Params.FrameId == t.topFrameId {
+			t.isTransitioning = false
+		}
+	})
+}
+
+func (t *Tab) subscribeFrameNavigationEvent() {
+	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		if t.isNavigating {
+			return
+		}
+
 	})
 }
 
 func (t *Tab) subscribeSetChildNodes() {
 	// new nodes
 	t.Subscribe("DOM.setChildNodes", func(target *gcd.ChromeTarget, payload []byte) {
-		log.Printf("setChildNodes: %s\n", string(payload))
 		header := &gcdapi.DOMSetChildNodesEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -93,7 +107,7 @@ func (t *Tab) subscribeChildNodeCountUpdated() {
 }
 func (t *Tab) subscribeChildNodeInserted() {
 	t.Subscribe("DOM.childNodeInserted", func(target *gcd.ChromeTarget, payload []byte) {
-		log.Printf("childNodeInserted: %s\n", string(payload))
+		//log.Printf("childNodeInserted: %s\n", string(payload))
 		header := &gcdapi.DOMChildNodeInsertedEvent{}
 		err := json.Unmarshal(payload, header)
 		if err == nil {
@@ -128,7 +142,6 @@ func (t *Tab) subscribeInlineStyleInvalidated() {
 func (t *Tab) subscribeDocumentUpdated() {
 	// node ids are no longer valid
 	t.Subscribe("DOM.documentUpdated", func(target *gcd.ChromeTarget, payload []byte) {
-		log.Printf("%s\n", string(payload))
 		t.nodeChange <- &NodeChangeEvent{EventType: DocumentUpdatedEvent}
 	})
 }

@@ -68,25 +68,31 @@ func TestTabGetConsoleMessage(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
+	timeout := time.NewTimer(5 * time.Second)
+	done := make(chan struct{})
 	tab, err := testAuto.GetTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		t.Logf("got message: %v\n", message)
-		callerTab.StopConsoleMessages(true)
-		wg.Done()
+		t.Logf("got message: %v\n", message.Text)
+		if message.Text == "this is a console message" {
+			done <- struct{}{}
+		}
+
 	}
 	tab.GetConsoleMessages(msgHandler)
 
 	if _, err := tab.Navigate(testServerAddr + "console_log.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	go testTimeout(t, 5)
-	wg.Wait()
+	select {
+	case <-done:
+		return
+	case <-timeout.C:
+		t.Fatalf("error waiting for console message")
+	}
 
 }
 
@@ -131,7 +137,7 @@ func TestTabGetPageSource(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	src, err = tab.GetPageSource("")
+	src, err = tab.GetPageSource(0)
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
@@ -155,15 +161,14 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting inner frame element")
 	}
-	err = ele.WaitForReady()
+	id, err := ele.GetFrameDocumentNodeId()
 	if err != nil {
-		t.Fatalf("error waiting for inner frame element")
-	}
-	if ele.FrameId() == "" {
-		t.Fatalf("frameid is empty!")
+		t.Fatalf("error getting iframe document node id: %s\n", err)
 	}
 
-	src, err = tab.GetPageSource(ele.FrameId())
+	frameEle, _ := tab.GetElementByNodeId(id)
+
+	src, err = tab.GetPageSource(frameEle.NodeId())
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
@@ -206,8 +211,9 @@ func TestTabPromptHandler(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
+	timeout := time.NewTimer(5 * time.Second)
+	done := make(chan struct{})
+
 	tab, err := testAuto.GetTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
@@ -221,7 +227,7 @@ func TestTabPromptHandler(t *testing.T) {
 	tab.SetJavaScriptPromptHandler(promptHandlerFn)
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		if message.Text == "someinput" {
-			wg.Done()
+			done <- struct{}{}
 		}
 	}
 	tab.GetConsoleMessages(msgHandler)
@@ -229,10 +235,15 @@ func TestTabPromptHandler(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "prompt.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	go testTimeout(t, 5)
-	wg.Wait()
+	select {
+	case <-done:
+		return
+	case <-timeout.C:
+		t.Fatalf("error waiting for console message")
+	}
 }
 
+// prompts will block navigation from returning
 func TestTabNavigationTimeout(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
@@ -242,8 +253,8 @@ func TestTabNavigationTimeout(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	tab.SetNavigationTimeout(10)
-	if _, err := tab.Navigate(testServerAddr + "prompt.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, err := tab.Navigate(testServerAddr + "prompt.html"); err == nil {
+		t.Fatalf("did not get an error navigating: %s\n", err)
 	}
 }
 
@@ -392,7 +403,12 @@ func TestTabWindows(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
-
+	t.Logf("# of elements: %d\n", len(tab.elements))
+	_, err = tab.GetDocument()
+	if err != nil {
+		t.Fatalf("error getting document from tab")
+	}
+	t.Logf("# of elements: %d\n", len(tab.elements))
 	ele, _, err := tab.GetElementById("mainwindow")
 	if err != nil {
 		t.Fatalf("error getting mainwindow element")
@@ -416,7 +432,7 @@ func TestTabAfterRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.GetTab()
-	tab.ChromeTarget.DebugEvents(true)
+	//tab.ChromeTarget.DebugEvents(true)
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -475,55 +491,93 @@ func TestTabFrameRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.GetTab()
-	tab.ChromeTarget.DebugEvents(true)
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
 	if _, err := tab.Navigate(testServerAddr + "frame_top.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
-	time.Sleep(10 * time.Second)
 
-	/*
-		oldDoc, err := tab.GetDocument()
-		if err != nil {
-			t.Fatalf("error getting document")
-		}
+	ifr, ready, err := tab.GetElementById("frameredirect")
+	if err != nil {
+		t.Fatalf("error finding frame element")
+	}
 
-		time.Sleep(4 * time.Second)
+	if !ready {
+		ifr.WaitForReady()
+	}
 
-		if oldDoc.IsInvalid() {
-			t.Fatalf("error document was invalidated after frame redirect!")
-		}
+	if ifr.IsInvalid() {
+		t.Fatalf("error frame was invalidated before redirect")
+	}
 
-		frames, err := tab.GetFrameResources()
-		if err != nil {
-			t.Fatalf("error getting frame resources: %s\n", err)
-		}
-		var frameId string
-		for k, v := range frames {
-			t.Logf("frameId: %s frame: %#v\n", k, v)
-			if k != "top" {
-				frameId = k
-			}
-		}
-		childEle, _, err := tab.GetDocumentElementById(frameId, "child")
-		if err != nil {
-			t.Fatalf("error getting child element in frame")
-		}
-		childEle.WaitForReady()
-		attr, err := childEle.GetAttributes()
-		if err != nil {
-			t.Fatalf("error getting child attributes")
-		}
-		t.Logf("%#v\n", attr)
-		for k, v := range tab.Documents {
-			t.Logf("frameId: %s ele: %#v\n", k, v)
-		}
-	*/
+	// get reference to the frames document before redirect
+	ifrDocNodeId, err := ifr.GetFrameDocumentNodeId()
+	if err != nil {
+		t.Fatalf("error getting doc node of invalidated iframe")
+	}
+	ifrDoc, _ := tab.GetElementByNodeId(ifrDocNodeId)
+
+	time.Sleep(4 * time.Second)
+
+	if !ifr.IsInvalid() {
+		t.Fatalf("error iframe was not invalidated after redirect")
+	}
+
+	if !ifrDoc.IsInvalid() {
+		t.Fatalf("error the iframe elements document was not invalidated after redirect")
+	}
 }
 
-func testTimeout(t *testing.T, duration time.Duration) {
-	time.Sleep(duration)
-	t.Fatalf("timed out waiting for console message")
+func TestTabMultiTab(t *testing.T) {
+	numTabs := 5
+	tabs := make([]*Tab, numTabs)
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	for i := 0; i < numTabs; i++ {
+		tab, err := testAuto.NewTab()
+		if err != nil {
+			t.Fatalf("error opening tab %d %s\n", i, err)
+		}
+		tabs[i] = tab
+	}
+	wg := &sync.WaitGroup{}
+	for _, tab := range tabs {
+		wg.Add(1)
+		go testMultiNavigateSendKeys(t, wg, tab)
+	}
+	wg.Wait()
+}
+
+func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
+	var err error
+	var ele *Element
+	consoleWg := &sync.WaitGroup{}
+	consoleWg.Add(1)
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		t.Logf("got message: %v\n", message)
+		if message.Text == "zomgs Test!" {
+			callerTab.StopConsoleMessages(true)
+			consoleWg.Done()
+		}
+
+	}
+	tab.GetConsoleMessages(msgHandler)
+
+	_, err = tab.Navigate(testServerAddr + "input.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	ele, _, err = tab.GetElementById("attr")
+	if err != nil {
+		t.Fatalf("error finding input attr: %s\n", err)
+	}
+
+	err = ele.SendKeys("zomgs Test!\n")
+	if err != nil {
+		t.Fatalf("error sending keys: %s\n", err)
+	}
+	consoleWg.Wait()
+	wg.Done()
 }
