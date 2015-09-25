@@ -299,23 +299,18 @@ func TestElementFrameGetTag(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	frames := tab.GetFrameDocuments()
-
-	var nodeId = -1
-	for _, fr := range frames {
-		url, _ := tab.GetDocumentCurrentUrl(fr.NodeId())
-		if url == testServerAddr+"inner.html" {
-			nodeId = fr.NodeId()
-		}
-		t.Logf("frame nodeid %d url: %s\n", fr.NodeId(), url)
-	}
-	if nodeId == -1 {
-		t.Fatalf("error getting inner.html")
-	}
-
-	ele, _, err := tab.GetDocumentElementById(nodeId, "output")
+	ifr, _, err := tab.GetElementById("innerfr")
 	if err != nil {
-		t.Fatalf("error finding the div element inside of frame nodeId: %d: %s\n", nodeId, err)
+		t.Fatalf("error getting inner frame element")
+	}
+	ifrDocNodeId, err := ifr.GetFrameDocumentNodeId()
+	if err != nil {
+		t.Fatalf("error getting inner frame's document node id")
+	}
+
+	ele, _, err := tab.GetDocumentElementById(ifrDocNodeId, "output")
+	if err != nil {
+		t.Fatalf("error finding the div element inside of frame nodeId: %d: %s\n", ifrDocNodeId, err)
 	}
 
 	err = ele.WaitForReady()

@@ -15,6 +15,43 @@ func (t *Tab) subscribeLoadEvent() {
 	})
 }
 
+func (t *Tab) subscribeFrameLoadingEvent() {
+	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		if t.isNavigating {
+			return
+		}
+		header := &gcdapi.PageFrameStartedLoadingEvent{}
+		err := json.Unmarshal(payload, header)
+		// has the top frame id begun navigating?
+		if err == nil && header.Params.FrameId == t.topFrameId {
+			t.isTransitioning = true
+		}
+	})
+}
+
+func (t *Tab) subscribeFrameFinishedEvent() {
+	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		if t.isNavigating {
+			return
+		}
+		header := &gcdapi.PageFrameStoppedLoadingEvent{}
+		err := json.Unmarshal(payload, header)
+		// has the top frame id begun navigating?
+		if err == nil && header.Params.FrameId == t.topFrameId {
+			t.isTransitioning = false
+		}
+	})
+}
+
+func (t *Tab) subscribeFrameNavigationEvent() {
+	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		if t.isNavigating {
+			return
+		}
+
+	})
+}
+
 func (t *Tab) subscribeSetChildNodes() {
 	// new nodes
 	t.Subscribe("DOM.setChildNodes", func(target *gcd.ChromeTarget, payload []byte) {

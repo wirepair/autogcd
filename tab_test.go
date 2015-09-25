@@ -403,7 +403,12 @@ func TestTabWindows(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
-
+	t.Logf("# of elements: %d\n", len(tab.elements))
+	_, err = tab.GetDocument()
+	if err != nil {
+		t.Fatalf("error getting document from tab")
+	}
+	t.Logf("# of elements: %d\n", len(tab.elements))
 	ele, _, err := tab.GetElementById("mainwindow")
 	if err != nil {
 		t.Fatalf("error getting mainwindow element")
@@ -427,7 +432,7 @@ func TestTabAfterRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.GetTab()
-	tab.ChromeTarget.DebugEvents(true)
+	//tab.ChromeTarget.DebugEvents(true)
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -486,7 +491,6 @@ func TestTabFrameRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.GetTab()
-	//tab.ChromeTarget.DebugEvents(true)
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -507,16 +511,73 @@ func TestTabFrameRedirect(t *testing.T) {
 		t.Fatalf("error frame was invalidated before redirect")
 	}
 
+	// get reference to the frames document before redirect
+	ifrDocNodeId, err := ifr.GetFrameDocumentNodeId()
+	if err != nil {
+		t.Fatalf("error getting doc node of invalidated iframe")
+	}
+	ifrDoc, _ := tab.GetElementByNodeId(ifrDocNodeId)
+
 	time.Sleep(4 * time.Second)
 
 	if !ifr.IsInvalid() {
 		t.Fatalf("error iframe was not invalidated after redirect")
 	}
-	ifrDocNode, err := ifr.GetFrameDocumentNodeId()
+
+	if !ifrDoc.IsInvalid() {
+		t.Fatalf("error the iframe elements document was not invalidated after redirect")
+	}
+}
+
+func TestTabMultiTab(t *testing.T) {
+	numTabs := 5
+	tabs := make([]*Tab, numTabs)
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	for i := 0; i < numTabs; i++ {
+		tab, err := testAuto.NewTab()
+		if err != nil {
+			t.Fatalf("error opening tab %d %s\n", i, err)
+		}
+		tabs[i] = tab
+	}
+	wg := &sync.WaitGroup{}
+	for _, tab := range tabs {
+		wg.Add(1)
+		go testMultiNavigateSendKeys(t, wg, tab)
+	}
+	wg.Wait()
+}
+
+func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
+	var err error
+	var ele *Element
+	consoleWg := &sync.WaitGroup{}
+	consoleWg.Add(1)
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		t.Logf("got message: %v\n", message)
+		if message.Text == "zomgs Test!" {
+			callerTab.StopConsoleMessages(true)
+			consoleWg.Done()
+		}
+
+	}
+	tab.GetConsoleMessages(msgHandler)
+
+	_, err = tab.Navigate(testServerAddr + "input.html")
 	if err != nil {
-		t.Fatalf("error getting doc node of invalidated iframe")
+		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	ifrDoc, _ := tab.GetElementByNodeId(ifrDocNode)
-	t.Logf("ifr doc invalidated? %t\n", ifrDoc.IsInvalid())
+	ele, _, err = tab.GetElementById("attr")
+	if err != nil {
+		t.Fatalf("error finding input attr: %s\n", err)
+	}
+
+	err = ele.SendKeys("zomgs Test!\n")
+	if err != nil {
+		t.Fatalf("error sending keys: %s\n", err)
+	}
+	consoleWg.Wait()
+	wg.Done()
 }

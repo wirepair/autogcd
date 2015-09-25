@@ -7,20 +7,30 @@ import (
 	"time"
 )
 
+// An attempt was made to execute a method for which the element type is incorrect
 type IncorrectElementTypeErr struct {
 	NodeName     string
 	ExpectedName string
 }
 
 func (e *IncorrectElementTypeErr) Error() string {
-	return "incorrect element type expected " + e.ExpectedName + " but this type is " + e.NodeName
+	return "incorrect element type, expected " + e.ExpectedName + " but this type is " + e.NodeName
 }
 
+// The element has been removed from the DOM
 type InvalidElementErr struct {
 }
 
 func (e *InvalidElementErr) Error() string {
 	return "this element has been invalidated"
+}
+
+// The element has no children
+type ElementHasNoChildrenErr struct {
+}
+
+func (e *ElementHasNoChildrenErr) Error() string {
+	return "this element has no child elements"
 }
 
 // for when we have an element that has not been populated
@@ -32,6 +42,7 @@ func (e *ElementNotReadyErr) Error() string {
 	return "this element is not ready"
 }
 
+// for when the dimensions of an element are incorrect to calculate the centroid
 type InvalidDimensionsErr struct {
 	Message string
 }
@@ -216,6 +227,9 @@ func (e *Element) updateChildNodeCount(newValue int) {
 }
 
 func (e *Element) addChild(child *gcdapi.DOMNode) {
+	if e.node.Children == nil {
+		e.node.Children = make([]*gcdapi.DOMNode, 0)
+	}
 	e.node.Children = append(e.node.Children, child)
 	e.node.ChildNodeCount++
 }
@@ -226,27 +240,42 @@ func (e *Element) addChildren(childNodes []*gcdapi.DOMNode) {
 	}
 }
 
-func (e *Element) removeChild(child *gcdapi.DOMNode) {
+func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
+	var idx int
+	var child *gcdapi.DOMNode
 	childIdx := -1
-	for idx, child := range e.node.Children {
-		if child.NodeId == child.NodeId {
+	if e.node == nil || e.node.Children == nil {
+		return
+	}
+	for idx, child = range e.node.Children {
+		if child.NodeId == removedNode.NodeId {
 			childIdx = idx
 			break
 		}
 	}
 	// remove the child via idx from our slice
-	if idx != -1 {
-		e.node.Children = append(e.node.Children[:i], e.node.Children[:i+1]...)
+	if childIdx == -1 {
+		return
 	}
+
+	e.node.Children = append(e.node.Children[:childIdx], e.node.Children[:childIdx+1]...)
 	e.node.ChildNodeCount = e.node.ChildNodeCount - 1
 }
 
-func (e *Element) GetChildNodeIds() []int {
-	ids := make([]int, len(e.node.Children))
-	for _, child := range e.node.Children {
-		ids = append(ids, child.NodeId)
+// Get child node ids, returns nil if node is not read
+func (e *Element) GetChildNodeIds() ([]int, error) {
+	if !e.ready {
+		return nil, &ElementNotReadyErr{}
 	}
-	return ids
+	if e.node == nil || e.node.Children == nil {
+		return nil, &ElementHasNoChildrenErr{}
+	}
+
+	ids := make([]int, len(e.node.Children))
+	for k, child := range e.node.Children {
+		ids[k] = child.NodeId
+	}
+	return ids, nil
 }
 
 // Returns the tag name (input, div) if the element is in a ready state.
@@ -317,6 +346,10 @@ func (e *Element) GetAttributes() (map[string]string, error) {
 	return e.attributes, nil
 }
 
+func (e *Element) GetAttribute(name string) string {
+	return e.attributes[name]
+}
+
 // Works like WebDriver's clear(), simply sets the attribute value for input
 // or clears the value for textarea. This element must be ready so we can
 // properly read the nodeName value.
@@ -325,6 +358,10 @@ func (e *Element) Clear() error {
 
 	if !e.ready {
 		return &ElementNotReadyErr{}
+	}
+
+	if e.nodeName != "textarea" || e.nodeName != "input" {
+		return &IncorrectElementTypeErr{ExpectedName: "textarea or input", NodeName: e.nodeName}
 	}
 
 	if e.nodeName == "textarea" {
@@ -355,7 +392,7 @@ func (e *Element) Click() error {
 }
 
 // SendKeys - sends each individual character after focusing (clicking) on the element.
-// Extremely basic, doesn't take into account most/all system keys except enter.
+// Extremely basic, doesn't take into account most/all system keys except enter, tab or backspace.
 func (e *Element) SendKeys(text string) error {
 	err := e.Click()
 	if err != nil {
@@ -375,6 +412,7 @@ func (e *Element) Dimensions() ([]float64, error) {
 	return points, nil
 }
 
+// Gnarly output mode activated
 func (e *Element) String() string {
 	output := fmt.Sprintf("NodeId: %d Invalid: %t Ready: %t", e.id, e.invalidated, e.ready)
 	if !e.ready {
@@ -384,7 +422,7 @@ func (e *Element) String() string {
 	for key, value := range e.attributes {
 		attrs = attrs + "\t" + key + "=" + value + "\n"
 	}
-	output = fmt.Sprintf("%s NodeType: %d TagName: %s characterData: %s childNodeCount: %d attributes (%d): \n%s", output, e.nodeType, e.nodeName, e.characterData, e.childNodeCount, len(e.attributes), attrs)
+	output = fmt.Sprintf("%s NodeType: %d TagName: %s characterData: %s childNodeCount: %d attributes (%d): \n%s", output, e.nodeType, e.nodeName, e.characterData, e.node.ChildNodeCount, len(e.attributes), attrs)
 	if e.nodeType == 9 {
 		output = fmt.Sprintf("%s FrameId: %s documentURL: %s\n", output, e.node.FrameId, e.node.DocumentURL)
 	}

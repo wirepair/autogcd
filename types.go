@@ -18,6 +18,26 @@ const (
 	ChildNodeRemovedEvent       ChangeEventType = 0x8
 )
 
+var changeEventMap = map[ChangeEventType]string{
+	DocumentUpdatedEvent:        "DocumentUpdatedEvent",
+	SetChildNodesEvent:          "SetChildNodesEvent",
+	AttributeModifiedEvent:      "AttributeModifiedEvent",
+	AttributeRemovedEvent:       "AttributeRemovedEvent",
+	InlineStyleInvalidatedEvent: "InlineStyleInvalidatedEvent",
+	CharacterDataModifiedEvent:  "CharacterDataModifiedEvent",
+	ChildNodeCountUpdatedEvent:  "ChildNodeCountUpdatedEvent",
+	ChildNodeInsertedEvent:      "ChildNodeInsertedEvent",
+	ChildNodeRemovedEvent:       "ChildNodeRemovedEvent",
+}
+
+func (evt ChangeEventType) String() string {
+	if s, ok := changeEventMap[evt]; ok {
+		return s
+	}
+	return ""
+}
+
+// For handling DOM updating nodes
 type NodeChangeEvent struct {
 	EventType      ChangeEventType   // the type of node change event
 	NodeId         int               // nodeid of change
@@ -33,33 +53,35 @@ type NodeChangeEvent struct {
 
 }
 
+// Outbound network requests
 type NetworkRequest struct {
-	RequestId        string
-	FrameId          string
-	LoaderId         string
-	DocumentURL      string
-	Request          *gcdapi.NetworkRequest
-	Timestamp        float64
-	Initiator        *gcdapi.NetworkInitiator
-	RedirectResponse *gcdapi.NetworkResponse
-	Type             string
+	RequestId        string                   // Internal chrome request id
+	FrameId          string                   // frame that the request went out on
+	LoaderId         string                   // internal chrome loader id
+	DocumentURL      string                   // url of the frame
+	Request          *gcdapi.NetworkRequest   // underlying Request object
+	Timestamp        float64                  // time the request was dispatched
+	Initiator        *gcdapi.NetworkInitiator // who initiated the request
+	RedirectResponse *gcdapi.NetworkResponse  // non-nil if it was a redirect
+	Type             string                   // Document, Stylesheet, Image, Media, Font, Script, TextTrack, XHR, Fetch, EventSource, WebSocket, Other
 }
 
+// Inbound network responses
 type NetworkResponse struct {
-	RequestId string
-	FrameId   string
-	LoaderId  string
-	Response  *gcdapi.NetworkResponse
-	Timestamp float64
-	Type      string
+	RequestId string                  // Internal chrome request id
+	FrameId   string                  // frame that the request went out on
+	LoaderId  string                  // internal chrome loader id
+	Response  *gcdapi.NetworkResponse // underlying Response object
+	Timestamp float64                 // time the request was received
+	Type      string                  // Document, Stylesheet, Image, Media, Font, Script, TextTrack, XHR, Fetch, EventSource, WebSocket, Other
 }
 
 type StorageEventType uint16
 
 type StorageEvent struct {
-	IsLocalStorage bool
-	SecurityOrigin string
-	Key            string
-	NewValue       string
-	OldValue       string
+	IsLocalStorage bool   // if true, local storage, false session storage
+	SecurityOrigin string // origin that this event occurred on
+	Key            string // storage key
+	NewValue       string // new storage value
+	OldValue       string // old storage value
 }
