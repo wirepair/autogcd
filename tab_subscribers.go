@@ -30,7 +30,7 @@ func (t *Tab) subscribeFrameLoadingEvent() {
 }
 
 func (t *Tab) subscribeFrameFinishedEvent() {
-	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+	t.Subscribe("Page.frameStoppedLoading", func(target *gcd.ChromeTarget, payload []byte) {
 		if t.isNavigating {
 			return
 		}
@@ -40,15 +40,6 @@ func (t *Tab) subscribeFrameFinishedEvent() {
 		if err == nil && header.Params.FrameId == t.topFrameId {
 			t.isTransitioning = false
 		}
-	})
-}
-
-func (t *Tab) subscribeFrameNavigationEvent() {
-	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
-		if t.isNavigating {
-			return
-		}
-
 	})
 }
 

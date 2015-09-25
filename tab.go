@@ -46,7 +46,7 @@ type TimeoutErr struct {
 }
 
 func (e *TimeoutErr) Error() string {
-	return "Timed out attempting to " + e.Message
+	return "Timed out " + e.Message
 }
 
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
@@ -70,6 +70,9 @@ type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 // A function to listen for DOM Node Change Events
 type DomChangeHandlerFunc func(tab *Tab, change *NodeChangeEvent)
 
+// A function to iteratively call until returns without error
+type ConditionalFunc func(tab *Tab) bool
+
 // Our tab object for driving a specific tab and gathering elements.
 type Tab struct {
 	*gcd.ChromeTarget                        // underlying chrometarget
@@ -82,10 +85,10 @@ type Tab struct {
 	nodeChange         chan *NodeChangeEvent // for receiving node change events from tab_subscribers
 	navigationCh       chan int              // for receiving navigation complete messages while isNavigating is true
 	setNodesWg         *sync.WaitGroup       // tracks setChildNode event calls when Navigating.
-	navigationTimeout  time.Duration         // (seconds) amount of time to wait before failing navigation
-	elementTimeout     time.Duration         // (seconds) amount of time to wait for element readiness
-	stabilityTimeout   time.Duration         // (seconds) amount of time to give up waiting for stability
-	stabilityTime      time.Duration         // (milliseconds) amount of time of no activity to consider the DOM stable
+	navigationTimeout  time.Duration         // amount of time to wait before failing navigation
+	elementTimeout     time.Duration         // amount of time to wait for element readiness
+	stabilityTimeout   time.Duration         // amount of time to give up waiting for stability
+	stableAfter        time.Duration         // amount of time of no activity to consider the DOM stable
 	lastNodeChangeTime time.Time             // timestamp of when the last node change occurred
 	domChangeHandler   DomChangeHandlerFunc  // allows the caller to be notified of DOM change events.
 }
@@ -96,14 +99,14 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.eleMutex = &sync.RWMutex{}
 	t.elements = make(map[int]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
-	t.navigationTimeout = 30           // default 30 seconds for timeout
-	t.isNavigating = false             // for when Tab.Navigate() is called
-	t.isTransitioning = false          // for when an action or redirect causes the top level frame to navigate
-	t.navigationCh = make(chan int, 1) // for signaling navigation complete
-	t.setNodesWg = &sync.WaitGroup{}   // wait for setChildNode events to complete
-	t.elementTimeout = 5               // default 5 seconds for waiting for element.
-	t.stabilityTimeout = 2             // default 2 seconds before we give up waiting for stability
-	t.stabilityTime = 300              // default 300 ms for considering the DOM stable
+	t.isNavigating = false                 // for when Tab.Navigate() is called
+	t.isTransitioning = false              // for when an action or redirect causes the top level frame to navigate
+	t.navigationCh = make(chan int, 1)     // for signaling navigation complete
+	t.setNodesWg = &sync.WaitGroup{}       // wait for setChildNode events to complete
+	t.navigationTimeout = 30 * time.Second // default 30 seconds for timeout
+	t.elementTimeout = 5 * time.Second     // default 5 seconds for waiting for element.
+	t.stabilityTimeout = 2 * time.Second   // default 2 seconds before we give up waiting for stability
+	t.stableAfter = 300 * time.Millisecond // default 300 ms for considering the DOM stable
 	t.domChangeHandler = nil
 	t.Page.Enable()
 	t.DOM.Enable()
@@ -132,8 +135,8 @@ func (t *Tab) SetStabilityTimeout(timeout time.Duration) {
 // How long to wait for no node changes before we consider the DOM stable
 // note that stability timeout will fire if the DOM is constantly changing.
 // stabilityTime is in milliseconds, default is 300 ms.
-func (t *Tab) SetStabilityTime(stabilityTime time.Duration) {
-	t.stabilityTime = stabilityTime
+func (t *Tab) SetStabilityTime(stableAfter time.Duration) {
+	t.stableAfter = stableAfter
 }
 
 // Navigates to a URL and does not return until the Page.loadEventFired event
@@ -142,7 +145,7 @@ func (t *Tab) SetStabilityTime(stabilityTime time.Duration) {
 func (t *Tab) Navigate(url string) (string, error) {
 	t.isNavigating = true
 	frameId, err := t.Page.Navigate(url)
-	timeoutTimer := time.NewTimer(t.navigationTimeout * time.Second)
+	timeoutTimer := time.NewTimer(t.navigationTimeout)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +154,7 @@ func (t *Tab) Navigate(url string) (string, error) {
 	case <-t.navigationCh:
 		timeoutTimer.Stop()
 	case <-timeoutTimer.C:
-		return "", &TimeoutErr{Message: "navigate to: " + url}
+		return "", &TimeoutErr{Message: "navigating to: " + url}
 	}
 	t.isNavigating = false
 
@@ -166,35 +169,21 @@ func (t *Tab) Navigate(url string) (string, error) {
 	return frameId, nil
 }
 
-// Call this after clicking on elements or sending keys to see if we are transitioning to
-// a new page. Pass in a delay to give the browser some time to handle the click/sendKeys event
-// before starting our transitionin check. Then we will check if we are transitioning every 20 ms,
-// give up after navigationTimeout. Pass true for waitStable to wait for dom node changes to finish
-func (t *Tab) WaitTransitioning(delay time.Duration, waitStable bool) error {
-	checkRate := time.Duration(20)
-	timeoutTimer := time.NewTimer(t.navigationTimeout * time.Second)
-	transitionCheck := time.NewTicker(checkRate * time.Millisecond) // check last node change every 20 seconds
-	// give the Tab a bit of time to wait before we start checking for navigation events
-	delayTimer := time.NewTimer(delay * time.Millisecond)
-	<-delayTimer.C
-
+// Calls a function every rate until conditionFn returns true or timeout occurs.
+func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) error {
+	rateTicker := time.NewTicker(rate)
+	timeoutTimer := time.NewTimer(timeout)
 	for {
 		select {
-		case <-transitionCheck.C:
-			// done transitioning,
-			if t.isTransitioning == false {
-				// kill our timeoutTimer and start stability check if waitStable is true
-				timeoutTimer.Stop()
-				if waitStable {
-					return t.WaitStable()
-				}
+		case <-timeoutTimer.C:
+			return &TimeoutErr{Message: "waiting for conditional func to not return error"}
+		case <-rateTicker.C:
+			ret := conditionFn(t)
+			if ret == true {
 				return nil
 			}
-		case <-timeoutTimer.C:
-			return &TimeoutErr{Message: "transitioning failed due to timeout"}
 		}
 	}
-	return nil
 }
 
 // A very rudementary stability check, compare current time with lastNodeChangeTime and see if it
@@ -207,19 +196,19 @@ func (t *Tab) WaitTransitioning(delay time.Duration, waitStable bool) error {
 // page but simply inserts and removes elements dynamically. Returns error only if we timed out.
 func (t *Tab) WaitStable() error {
 	checkRate := time.Duration(20)
-	timeoutTimer := time.NewTimer(t.stabilityTimeout * time.Second)
-	if t.stabilityTime < checkRate {
-		checkRate = t.stabilityTime / 2 // halve the checkRate of the user supplied stabilityTime
+	timeoutTimer := time.NewTimer(t.stabilityTimeout)
+	if t.stableAfter < checkRate {
+		checkRate = t.stableAfter / 2 // halve the checkRate of the user supplied stabilityTime
 
 	}
-	stableCheck := time.NewTicker(checkRate * time.Millisecond) // check last node change every 20 seconds
+	stableCheck := time.NewTicker(checkRate) // check last node change every 20 seconds
 	for {
 		select {
 		case <-timeoutTimer.C:
-			return &TimeoutErr{Message: "timed out waiting for DOM stability"}
+			return &TimeoutErr{Message: "waiting for DOM stability"}
 		case <-stableCheck.C:
 			//log.Printf("stable check tick, lastnode change time %v", time.Now().Sub(t.lastNodeChangeTime))
-			if time.Now().Sub(t.lastNodeChangeTime) >= t.stabilityTime*time.Millisecond {
+			if time.Now().Sub(t.lastNodeChangeTime) >= t.stableAfter*time.Millisecond {
 				//log.Printf("times up!")
 				return nil
 			}
