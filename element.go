@@ -146,6 +146,7 @@ func (e *Element) GetSource() (string, error) {
 	return e.tab.DOM.GetOuterHTML(e.id)
 }
 
+// Is this Element a #document?
 func (e *Element) IsDocument() (bool, error) {
 	if !e.ready {
 		return false, &ElementNotReadyErr{}
@@ -153,6 +154,7 @@ func (e *Element) IsDocument() (bool, error) {
 	return (e.nodeType == 9), nil
 }
 
+// If this is a #document, returns the underlying chrome frameId.
 func (e *Element) FrameId() (string, error) {
 	isDoc, err := e.IsDocument()
 	if err != nil {
@@ -278,7 +280,7 @@ func (e *Element) GetChildNodeIds() ([]int, error) {
 	return ids, nil
 }
 
-// Returns the tag name (input, div) if the element is in a ready state.
+// Returns the tag name (input, div etc) if the element is in a ready state.
 func (e *Element) GetTagName() (string, error) {
 	if !e.ready {
 		return "", &ElementNotReadyErr{}
@@ -347,7 +349,11 @@ func (e *Element) GetAttributes() (map[string]string, error) {
 }
 
 func (e *Element) GetAttribute(name string) string {
-	return e.attributes[name]
+	attr, err := e.GetAttributes()
+	if err != nil {
+		return ""
+	}
+	return attr[name]
 }
 
 // Works like WebDriver's clear(), simply sets the attribute value for input
@@ -391,9 +397,15 @@ func (e *Element) Click() error {
 	return e.tab.Click(x, y)
 }
 
+func (e *Element) Focus() error {
+	_, err := e.tab.DOM.Focus(e.id)
+	return err
+}
+
 // SendKeys - sends each individual character after focusing (clicking) on the element.
 // Extremely basic, doesn't take into account most/all system keys except enter, tab or backspace.
 func (e *Element) SendKeys(text string) error {
+	e.Focus()
 	err := e.Click()
 	if err != nil {
 		return err

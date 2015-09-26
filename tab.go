@@ -29,6 +29,15 @@ func (e *InvalidTabErr) Error() string {
 	return "Unable to access tab: " + e.Message
 }
 
+// When unable to navigate Forward or Back
+type InvalidNavigationErr struct {
+	Message string
+}
+
+func (e *InvalidNavigationErr) Error() string {
+	return e.Message
+}
+
 // Returned when an injected script caused an error
 type ScriptEvaluationErr struct {
 	Message          string
@@ -117,24 +126,24 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	return t
 }
 
-// How long to wait in seconds for navigations before giving up
+// How long to wait in seconds for navigations before giving up, default is 30 seconds
 func (t *Tab) SetNavigationTimeout(timeout time.Duration) {
 	t.navigationTimeout = timeout
 }
 
-// How long to wait in seconds for ele.WaitForReady() before giving up
+// How long to wait in seconds for ele.WaitForReady() before giving up, default is 5 seconds
 func (t *Tab) SetElementWaitTimeout(timeout time.Duration) {
 	t.elementTimeout = timeout
 }
 
-// How long to wait in milliseconds for WaitStable() to return
+// How long to wait for WaitStable() to return, default is 2 seconds.
 func (t *Tab) SetStabilityTimeout(timeout time.Duration) {
 	t.stabilityTimeout = timeout
 }
 
-// How long to wait for no node changes before we consider the DOM stable
-// note that stability timeout will fire if the DOM is constantly changing.
-// stabilityTime is in milliseconds, default is 300 ms.
+// How long to wait for no node changes before we consider the DOM stable.
+// Note that stability timeout will fire if the DOM is constantly changing.
+// The deafult stableAfter is 300 ms.
 func (t *Tab) SetStabilityTime(stableAfter time.Duration) {
 	t.stableAfter = stableAfter
 }
@@ -169,6 +178,68 @@ func (t *Tab) Navigate(url string) (string, error) {
 	return frameId, nil
 }
 
+// Returns the current navigation index, history entries or error
+func (t *Tab) NavigationHistory() (int, []*gcdapi.PageNavigationEntry, error) {
+	return t.Page.GetNavigationHistory()
+}
+
+// Reloads the page injecting evalScript to run on load. set Ignore cache to true
+// to have it act like ctrl+f5.
+func (t *Tab) Reload(ignoreCache bool, evalScript string) error {
+	_, err := t.Page.Reload(ignoreCache, evalScript)
+	return err
+}
+
+// Looks up the next navigation entry from the history and navigates to it.
+// Returns error if we could not find the next entry or navigation failed
+func (t *Tab) Forward() error {
+	next, err := t.ForwardEntry()
+	if err != nil {
+		return err
+	}
+	_, err = t.Page.NavigateToHistoryEntry(next.Id)
+	return err
+}
+
+// Returns the next entry in our navigation history for this tab.
+func (t *Tab) ForwardEntry() (*gcdapi.PageNavigationEntry, error) {
+	idx, entries, err := t.NavigationHistory()
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(entries); i++ {
+		if idx < entries[i].Id {
+			return entries[i], nil
+		}
+	}
+	return nil, &InvalidNavigationErr{Message: "Unable to navigate forward as we are on the latest navigation entry"}
+}
+
+// Looks up the previous navigation entry from the history and navigates to it.
+// Returns error if we could not find the previous entry or navigation failed
+func (t *Tab) Back() error {
+	prev, err := t.BackEntry()
+	if err != nil {
+		return err
+	}
+	_, err = t.Page.NavigateToHistoryEntry(prev.Id)
+	return err
+}
+
+// Returns the previous entry in our navigation history for this tab.
+func (t *Tab) BackEntry() (*gcdapi.PageNavigationEntry, error) {
+	idx, entries, err := t.NavigationHistory()
+	if err != nil {
+		return nil, err
+	}
+	for i := len(entries); i > 0; i-- {
+		if idx < entries[i].Id {
+			return entries[i], nil
+		}
+	}
+	return nil, &InvalidNavigationErr{Message: "Unable to navigate backward as we are on the first navigation entry"}
+}
+
 // Calls a function every rate until conditionFn returns true or timeout occurs.
 func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) error {
 	rateTicker := time.NewTicker(rate)
@@ -176,10 +247,11 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 	for {
 		select {
 		case <-timeoutTimer.C:
-			return &TimeoutErr{Message: "waiting for conditional func to not return error"}
+			return &TimeoutErr{Message: "waiting for conditional func to return true"}
 		case <-rateTicker.C:
 			ret := conditionFn(t)
 			if ret == true {
+				timeoutTimer.Stop()
 				return nil
 			}
 		}
@@ -187,7 +259,7 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 }
 
 // A very rudementary stability check, compare current time with lastNodeChangeTime and see if it
-// is greater than the stabilityTime. If it is, that means we haven't seen any activity over the minimum
+// is greater than the stableAfter duration. If it is, that means we haven't seen any activity over the minimum
 // allowed time, in which case we consider the DOM stable. Note this will most likely not work for sites
 // that insert and remove elements on timer/intervals as it will constantly update our lastNodeChangeTime
 // value. However, for most cases this should be enough. This should only be necessary to call when
@@ -195,7 +267,7 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 // would be submitting an XHR based form that does a history.pushState and does *not* actuall load a new
 // page but simply inserts and removes elements dynamically. Returns error only if we timed out.
 func (t *Tab) WaitStable() error {
-	checkRate := time.Duration(20)
+	checkRate := 20 * time.Millisecond
 	timeoutTimer := time.NewTimer(t.stabilityTimeout)
 	if t.stableAfter < checkRate {
 		checkRate = t.stableAfter / 2 // halve the checkRate of the user supplied stabilityTime
@@ -208,7 +280,7 @@ func (t *Tab) WaitStable() error {
 			return &TimeoutErr{Message: "waiting for DOM stability"}
 		case <-stableCheck.C:
 			//log.Printf("stable check tick, lastnode change time %v", time.Now().Sub(t.lastNodeChangeTime))
-			if time.Now().Sub(t.lastNodeChangeTime) >= t.stableAfter*time.Millisecond {
+			if time.Now().Sub(t.lastNodeChangeTime) >= t.stableAfter {
 				//log.Printf("times up!")
 				return nil
 			}
@@ -662,7 +734,6 @@ func (t *Tab) StopListeningStorage(shouldDisable bool) error {
 // to actually handle the prompt, otherwise the tab will be blocked waiting for input and never additional events.
 func (t *Tab) SetJavaScriptPromptHandler(promptHandlerFn PromptHandlerFunc) {
 	t.Subscribe("Page.javascriptDialogOpening", func(target *gcd.ChromeTarget, payload []byte) {
-		log.Printf("Javascript Dialog Opened!: %s\n", string(payload))
 		message := &gcdapi.PageJavascriptDialogOpeningEvent{}
 		if err := json.Unmarshal(payload, message); err == nil {
 			promptHandlerFn(t, message.Params.Message, message.Params.Type)
@@ -850,7 +921,7 @@ func (t *Tab) invalidateRemove(ele *Element) {
 
 // the entire document has been invalidated, request all nodes again
 func (t *Tab) documentUpdated() {
-	log.Printf("document updated, refreshed")
+	///log.Printf("document updated, refreshed")
 	t.GetDocument()
 }
 

@@ -76,7 +76,6 @@ func TestTabGetConsoleMessage(t *testing.T) {
 	}
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		t.Logf("got message: %v\n", message.Text)
 		if message.Text == "this is a console message" {
 			done <- struct{}{}
 		}
@@ -97,7 +96,6 @@ func TestTabGetConsoleMessage(t *testing.T) {
 }
 
 func TestTabGetDocument(t *testing.T) {
-	var doc *Element
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
@@ -110,22 +108,14 @@ func TestTabGetDocument(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	doc, err = tab.GetDocument()
+	_, err = tab.GetDocument()
 	if err != nil {
 		t.Fatalf("error getting doc: %s\n", err)
-	}
-	testPrintNodes(t, doc.node)
-}
-
-func testPrintNodes(t *testing.T, node *gcdapi.DOMNode) {
-	for _, childNode := range node.Children {
-		t.Logf("%#v\n\n", childNode)
-		testPrintNodes(t, childNode)
 	}
 }
 
 func TestTabGetPageSource(t *testing.T) {
-	var src string
+	//var src string
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
@@ -137,11 +127,11 @@ func TestTabGetPageSource(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	src, err = tab.GetPageSource(0)
+	_, err = tab.GetPageSource(0)
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
-	t.Logf("source: %s\n", src)
+	//t.Logf("source: %s\n", src)
 }
 
 func TestTabFrameGetPageSource(t *testing.T) {
@@ -175,7 +165,7 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if !strings.Contains(src, "<div>HELLL") {
 		t.Fatalf("error finding dynamically inserted element in source: %s\n", src)
 	}
-	t.Logf("source: %s\n", src)
+	//t.Logf("source: %s\n", src)
 }
 
 func TestTabGetFrameResources(t *testing.T) {
@@ -197,7 +187,7 @@ func TestTabGetFrameResources(t *testing.T) {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
 	for k, v := range resourceMap {
-		t.Logf("id: %s url: %s\n", k, v)
+		//t.Logf("id: %s url: %s\n", k, v)
 		src, wasBase64, err := tab.GetFrameSource(k, v)
 		if err != nil {
 			t.Fatalf("error getting frame source: %s\n", err)
@@ -270,7 +260,7 @@ func TestTabInjectScript(t *testing.T) {
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		if strings.Contains(message.Text, "inject") {
-			t.Logf("got message: %s\n", message.Text)
+			//t.Logf("got message: %s\n", message.Text)
 			wg.Done()
 		}
 	}
@@ -296,7 +286,7 @@ func TestTabEvaluateScript(t *testing.T) {
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		if strings.Contains(message.Text, "inject") {
-			t.Logf("got message: %s\n", message.Text)
+			//t.Logf("got message: %s\n", message.Text)
 			wg.Done()
 		}
 	}
@@ -305,7 +295,7 @@ func TestTabEvaluateScript(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	res, errEval := tab.EvaluateScript("JSON.stringify(document)")
+	_, errEval := tab.EvaluateScript("JSON.stringify(document)")
 	if errEval != nil {
 		t.Fatalf("error evaluating script: %s\n", errEval)
 	}
@@ -315,7 +305,7 @@ func TestTabEvaluateScript(t *testing.T) {
 		t.Fatalf("error evaluating trigger script: %s\n", errEval)
 	}
 	wg.Wait()
-	t.Logf("res: %#v\n", res)
+	//t.Logf("res: %#v\n", res)
 }
 
 func TestTabTwoTabCookies(t *testing.T) {
@@ -335,33 +325,24 @@ func TestTabTwoTabCookies(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
-	cookies1, err := tab1.GetCookies()
+	_, err = tab1.GetCookies()
 	if err != nil {
 		t.Fatalf("Error getting first tab cookies: %s\n", err)
-	}
-	for _, cookie := range cookies1 {
-		t.Logf("%#v\n", cookie)
 	}
 
 	if _, err := tab2.Navigate(testServerAddr + "cookie2.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	cookies2, err := tab2.GetCookies()
+	_, err = tab2.GetCookies()
 	if err != nil {
 		t.Fatalf("Error getting second tab cookies: %s\n", err)
 	}
-	for _, cookie := range cookies2 {
-		t.Logf("%#v\n", cookie)
-	}
 
-	// oddly this returns tab2's cookies :<
-	cookies3, err := tab1.GetCookies()
+	_, err = tab1.GetCookies()
 	if err != nil {
 		t.Fatalf("Error getting tab1 cookies again: %s\n", err)
 	}
-	for _, cookie := range cookies3 {
-		t.Logf("%#v\n", cookie)
-	}
+
 }
 
 func TestTabNetworkListen(t *testing.T) {
@@ -544,7 +525,7 @@ func TestTabMultiTab(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	for _, tab := range tabs {
 		wg.Add(1)
-		go testMultiNavigateSendKeys(t, wg, tab)
+		testMultiNavigateSendKeys(t, wg, tab)
 	}
 	wg.Wait()
 }
@@ -552,13 +533,12 @@ func TestTabMultiTab(t *testing.T) {
 func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 	var err error
 	var ele *Element
-	consoleWg := &sync.WaitGroup{}
-	consoleWg.Add(1)
+	// sleep for a random ms so we aren't attempting to send all events at the same time
+
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		t.Logf("got message: %v\n", message)
 		if message.Text == "zomgs Test!" {
 			callerTab.StopConsoleMessages(true)
-			consoleWg.Done()
+			wg.Done()
 		}
 
 	}
@@ -578,6 +558,4 @@ func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 	if err != nil {
 		t.Fatalf("error sending keys: %s\n", err)
 	}
-	consoleWg.Wait()
-	wg.Done()
 }

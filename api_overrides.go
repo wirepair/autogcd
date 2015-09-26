@@ -45,7 +45,6 @@ func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objec
 			ExceptionDetails *gcdapi.DebuggerExceptionDetails
 		}
 	}
-
 	// test if error first
 	cerr := &gcdmessage.ChromeErrorResponse{}
 	json.Unmarshal(resp.Data, cerr)

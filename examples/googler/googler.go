@@ -5,7 +5,6 @@ import (
 	"github.com/wirepair/autogcd"
 	"io/ioutil"
 	"log"
-	"strings"
 	"time"
 )
 
@@ -14,7 +13,6 @@ var (
 	userDir    string
 	chromePort string
 )
-var done chan struct{}
 
 // For an excellent list of command line switches see: http://peter.sh/experiments/chromium-command-line-switches/
 var startupFlags = []string{"--disable-new-tab-first-run", "--no-first-run", "--disable-translate"}
@@ -41,24 +39,18 @@ func main() {
 	auto := autogcd.NewAutoGcd(settings) // create our automation debugger
 	auto.Start()                         // start it
 	defer auto.Shutdown()
-	done = make(chan struct{})
 
 	tab, err := auto.GetTab() // get the first visual tab
 	if err != nil {
 		log.Fatalf("error getting visual tab to work with")
 	}
+	configureTab(tab)
 
-	tab.SetNavigationTimeout(navigationTimeout) // give up after 10 seconds for navigating, default is 30 seconds
-	tab.SetStabilityTime(stabilityTimeout)
 	if _, err := tab.Navigate("https://www.google.co.jp"); err != nil {
 		log.Fatalf("error going to google: %s\n", err)
 	}
 	log.Printf("navigation complete")
-	tab.WaitStable()
-	domHandlerFn := func(tab *autogcd.Tab, change *autogcd.NodeChangeEvent) {
-		//log.Printf("change event %s occurred\n", change.EventType)
-	}
-	tab.SetDomChangeHandler(domHandlerFn)
+	//tab.WaitStable()
 
 	err = tab.WaitFor(waitForRate, waitForTimeout, func(theTab *autogcd.Tab) bool {
 		_, ready, _ := tab.GetElementById("lst-ib")
@@ -79,14 +71,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("error sending keys to element: %s\n", err)
 	}
-	err = tab.WaitFor(waitForRate, waitForTimeout, func(theTab *autogcd.Tab) bool {
-		if title, err := theTab.GetTitle(); err != nil || strings.Contains(title, "github gcd") {
-			return false
-		}
-		return true
-	})
+	err = tab.WaitFor(waitForRate, waitForTimeout, autogcd.TitleContains(tab, "github gcd"))
 	if err != nil {
-		log.Println("timed out waiting for title")
+		log.Println("timed out waiting for title to change to github gcd")
 	}
 
 	log.Println("waiting for stability")
@@ -108,18 +95,24 @@ func main() {
 	log.Printf("Done")
 }
 
+func configureTab(tab *autogcd.Tab) {
+	tab.SetNavigationTimeout(navigationTimeout) // give up after 10 seconds for navigating, default is 30 seconds
+	tab.SetStabilityTime(stableAfter)
+	domHandlerFn := func(tab *autogcd.Tab, change *autogcd.NodeChangeEvent) {
+		//log.Printf("change event %s occurred\n", change.EventType)
+	}
+	tab.SetDomChangeHandler(domHandlerFn)
+}
+
 func loadGcd(ele *autogcd.Element, tab *autogcd.Tab) {
 	log.Printf("clicking google link\n")
 	err := ele.Click()
 	if err != nil {
 		log.Fatalf("error clicking google link: %s\n", err)
 	}
-	tab.WaitFor(waitForRate, waitForTimeout, func(theTab *autogcd.Tab) bool {
-		if title, err := theTab.GetTitle(); err != nil || (title != "wirepair/gcd" || title != "wirepair/gcd · GitHub") {
-			return false
-		}
-		return true
-	})
+	tab.WaitFor(waitForRate, waitForTimeout, autogcd.TitleContains(tab, "wirepair/gcd"))
+	log.Printf("here we are, bask in its glory")
+	time.Sleep(2 * time.Second)
 }
 
 func randUserDir() string {

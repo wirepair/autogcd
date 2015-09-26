@@ -17,9 +17,10 @@ func TestElementDimensions(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "/button.html"); err != nil {
+	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+	tab.WaitStable()
 	log.Printf("getting buttons")
 	buttons, err := tab.GetElementsBySelector("button")
 	if err != nil {
@@ -57,6 +58,8 @@ func TestElementClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+	tab.WaitStable()
+
 	buttons, err = tab.GetElementsBySelector("button")
 	if err != nil {
 		t.Fatalf("error finding buttons: %s\n", err)
@@ -72,7 +75,7 @@ func TestElementClick(t *testing.T) {
 	}
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		t.Log("Got message %v\n", message)
+		t.Logf("Got message %v\n", message)
 		if message.Text == "button clicked" {
 			callerTab.StopConsoleMessages(true)
 			wg.Done()
@@ -233,6 +236,7 @@ func TestElementGetTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+	tab.WaitFor(20*time.Millisecond, 2*time.Second, ElementByIdReady(tab, "attr"))
 
 	ele, _, err = tab.GetElementById("attr")
 	if err != nil {
@@ -298,6 +302,7 @@ func TestElementFrameGetTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+	tab.WaitFor(20*time.Millisecond, 2*time.Second, ElementByIdReady(tab, "innerfr"))
 
 	ifr, _, err := tab.GetElementById("innerfr")
 	if err != nil {
@@ -340,7 +345,7 @@ func TestElementInvalidated(t *testing.T) {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 	//tab.ChromeTarget.DebugEvents(true)
-
+	tab.WaitFor(20*time.Millisecond, 2*time.Second, ElementByIdReady(tab, "child"))
 	ele, ready, err := tab.GetElementById("child")
 	if err != nil {
 		t.Fatalf("error getting child element: %s\n", err)
