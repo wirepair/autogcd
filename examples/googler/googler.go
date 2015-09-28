@@ -12,6 +12,7 @@ var (
 	chromePath string
 	userDir    string
 	chromePort string
+	debug      bool
 )
 
 // For an excellent list of command line switches see: http://peter.sh/experiments/chromium-command-line-switches/
@@ -28,6 +29,7 @@ func init() {
 	flag.StringVar(&chromePath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to Xvfb")
 	flag.StringVar(&userDir, "dir", "C:\\temp\\", "user directory")
 	flag.StringVar(&chromePort, "port", "9222", "Debugger port")
+	flag.BoolVar(&debug, "debug", "false", "Show debug DOM node event changes")
 }
 
 func main() {
@@ -50,12 +52,8 @@ func main() {
 		log.Fatalf("error going to google: %s\n", err)
 	}
 	log.Printf("navigation complete")
-	//tab.WaitStable()
 
-	err = tab.WaitFor(waitForRate, waitForTimeout, func(theTab *autogcd.Tab) bool {
-		_, ready, _ := tab.GetElementById("lst-ib")
-		return ready
-	})
+	err = tab.WaitFor(waitForRate, waitForTimeout, autogcd.ElementByIdReady(tab, "lst-ib"))
 	if err != nil {
 		log.Println("timed out waiting for search field")
 	}
@@ -95,13 +93,16 @@ func main() {
 	log.Printf("Done")
 }
 
+// Set various timeouts
 func configureTab(tab *autogcd.Tab) {
 	tab.SetNavigationTimeout(navigationTimeout) // give up after 10 seconds for navigating, default is 30 seconds
 	tab.SetStabilityTime(stableAfter)
-	domHandlerFn := func(tab *autogcd.Tab, change *autogcd.NodeChangeEvent) {
-		//log.Printf("change event %s occurred\n", change.EventType)
+	if debug {
+		domHandlerFn := func(tab *autogcd.Tab, change *autogcd.NodeChangeEvent) {
+			log.Printf("change event %s occurred\n", change.EventType)
+		}
+		tab.GetDOMChanges(domHandlerFn)
 	}
-	tab.SetDomChangeHandler(domHandlerFn)
 }
 
 func loadGcd(ele *autogcd.Element, tab *autogcd.Tab) {
@@ -112,7 +113,7 @@ func loadGcd(ele *autogcd.Element, tab *autogcd.Tab) {
 	}
 	tab.WaitFor(waitForRate, waitForTimeout, autogcd.TitleContains(tab, "wirepair/gcd"))
 	log.Printf("here we are, bask in its glory")
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 }
 
 func randUserDir() string {

@@ -2,10 +2,14 @@ package autogcd
 
 import (
 	"github.com/wirepair/gcd/gcdapi"
-	"log"
 	"sync"
 	"testing"
 	"time"
+)
+
+var (
+	testWaitRate    = 20 * time.Millisecond
+	testWaitTimeout = 4 * time.Second
 )
 
 func TestElementDimensions(t *testing.T) {
@@ -16,28 +20,33 @@ func TestElementDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	tab.WaitStable()
-	log.Printf("getting buttons")
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementsBySelectorNotEmpty(tab, "button"))
+	if err != nil {
+		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+	}
+
 	buttons, err := tab.GetElementsBySelector("button")
 	if err != nil {
-		t.Fatalf("error getting buttons %s\n", err)
+		t.Fatalf("error finding buttons: %s\n", err)
 	}
-	log.Printf("got buttons")
+
 	for _, button := range buttons {
 		dimensions, err := button.Dimensions()
 		if err != nil {
 			t.Fatalf("error getting doc dimensions: %s\n", err)
 		}
 
-		x, y, err := centroid(dimensions)
+		_, _, err = centroid(dimensions)
 		if err != nil {
 			t.Fatalf("error getting centroid of doc: %s\n", err)
 		}
-		t.Logf("x: %d y: %d\n", x, y)
+		//t.Logf("x: %d y: %d\n", x, y)
 	}
 
 }
@@ -53,20 +62,21 @@ func TestElementClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "button.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	tab.WaitStable()
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementsBySelectorNotEmpty(tab, "button"))
+	if err != nil {
+		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+	}
 
 	buttons, err = tab.GetElementsBySelector("button")
 	if err != nil {
 		t.Fatalf("error finding buttons: %s\n", err)
-	}
-
-	if len(buttons) == 0 {
-		t.Fatal("no buttons found")
 	}
 
 	err = buttons[0].Click()
@@ -75,7 +85,7 @@ func TestElementClick(t *testing.T) {
 	}
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		t.Logf("Got message %v\n", message)
+		//t.Logf("Got message %v\n", message)
 		if message.Text == "button clicked" {
 			callerTab.StopConsoleMessages(true)
 			wg.Done()
@@ -104,19 +114,21 @@ func TestElementGetSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "button.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
 
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementsBySelectorNotEmpty(tab, "button"))
+	if err != nil {
+		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+	}
+
 	ele, err = tab.GetElementsBySelector("button")
 	if err != nil {
 		t.Fatalf("error finding buttons: %s\n", err)
-	}
-
-	if len(ele) == 0 {
-		t.Fatal("no element found")
 	}
 
 	src, err = ele[0].GetSource()
@@ -140,10 +152,15 @@ func TestElementGetAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "attributes.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
+	}
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
+	if err != nil {
+		t.Fatalf("error finding attr, timed out waiting: %s\n", err)
 	}
 
 	ele, _, err = tab.GetElementById("attr")
@@ -193,9 +210,10 @@ func TestElementSendKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		t.Logf("got message: %v\n", message)
+		//t.Logf("got message: %v\n", message)
 		if message.Text == "zomgs Test!" {
 			callerTab.StopConsoleMessages(true)
 			wg.Done()
@@ -207,6 +225,11 @@ func TestElementSendKeys(t *testing.T) {
 	_, err = tab.Navigate(testServerAddr + "input.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
+	}
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
+	if err != nil {
+		src, _ := tab.GetPageSource(0)
+		t.Fatalf("error finding attr, timed out waiting: %s\nsrc: %s\n", err, src)
 	}
 
 	ele, _, err = tab.GetElementById("attr")
@@ -231,24 +254,28 @@ func TestElementGetTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "attributes.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	tab.WaitFor(20*time.Millisecond, 2*time.Second, ElementByIdReady(tab, "attr"))
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
+	if err != nil {
+		t.Fatalf("error finding attr, timed out waiting: %s\n", err)
+	}
 
 	ele, _, err = tab.GetElementById("attr")
 	if err != nil {
 		t.Fatalf("error finding input: %s %#v\n", err, ele)
 	}
 
-	ele.WaitForReady()
 	tagName, err := ele.GetTagName()
 	if err != nil {
 		t.Fatalf("Error getting tagname!")
 	}
-	t.Logf("ele ready: tagname: " + tagName)
+	//t.Logf("ele ready: tagname: " + tagName)
 	if tagName != "input" {
 		t.Fatalf("Error expected tagname to be input got: %s\n", tagName)
 	}
@@ -264,11 +291,18 @@ func TestElementGetEventListeners(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "events.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "divvie"))
+	if err != nil {
+		t.Fatalf("error finding divvie, timed out waiting: %s\n", err)
+	}
+
 	ele, _, err = tab.GetElementById("divvie")
 	if err != nil {
 		t.Fatalf("error finding input: %s %#v\n", err, ele)
@@ -276,12 +310,12 @@ func TestElementGetEventListeners(t *testing.T) {
 	ele.WaitForReady()
 	listeners, err := ele.GetEventListeners()
 	for _, listener := range listeners {
-		t.Logf("%#v\n", listener)
-		src, err := tab.GetScriptSource(listener.Location.ScriptId)
+		//t.Logf("%#v\n", listener)
+		_, err := tab.GetScriptSource(listener.Location.ScriptId)
 		if err != nil {
 			t.Fatalf("error getting source: %s\n", err)
 		}
-		t.Logf("script source: %s\n", src)
+		//t.Logf("script source: %s\n", src)
 	}
 }
 
@@ -302,7 +336,12 @@ func TestElementFrameGetTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	tab.WaitFor(20*time.Millisecond, 2*time.Second, ElementByIdReady(tab, "innerfr"))
+	tab.Debug(true)
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "innerfr"))
+	if err != nil {
+		t.Fatalf("error finding innerfr, timed out waiting: %s\n", err)
+	}
 
 	ifr, _, err := tab.GetElementById("innerfr")
 	if err != nil {
@@ -339,13 +378,18 @@ func TestElementInvalidated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+	tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "invalidated.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	//tab.ChromeTarget.DebugEvents(true)
-	tab.WaitFor(20*time.Millisecond, 2*time.Second, ElementByIdReady(tab, "child"))
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "child"))
+	if err != nil {
+		t.Fatalf("error finding child, timed out waiting: %s\n", err)
+	}
+
 	ele, ready, err := tab.GetElementById("child")
 	if err != nil {
 		t.Fatalf("error getting child element: %s\n", err)
@@ -356,6 +400,7 @@ func TestElementInvalidated(t *testing.T) {
 	if ele.IsInvalid() {
 		t.Fatalf("error child is already invalid!")
 	}
+	// wait for timeout to removeChild
 	time.Sleep(3 * time.Second)
 	if !ele.IsInvalid() {
 		t.Fatalf("error child is not invalid after it was removed!")

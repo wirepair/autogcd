@@ -95,25 +95,6 @@ func TestTabGetConsoleMessage(t *testing.T) {
 
 }
 
-func TestTabGetDocument(t *testing.T) {
-	testAuto := testDefaultStartup(t)
-	defer testAuto.Shutdown()
-
-	tab, err := testAuto.GetTab()
-	if err != nil {
-		t.Fatalf("error getting tab")
-	}
-
-	if _, err = tab.Navigate(testServerAddr + "attributes.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
-	}
-
-	_, err = tab.GetDocument()
-	if err != nil {
-		t.Fatalf("error getting doc: %s\n", err)
-	}
-}
-
 func TestTabGetPageSource(t *testing.T) {
 	//var src string
 	testAuto := testDefaultStartup(t)
@@ -143,7 +124,7 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-
+	tab.Debug(true)
 	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
@@ -345,7 +326,7 @@ func TestTabTwoTabCookies(t *testing.T) {
 
 }
 
-func TestTabNetworkListen(t *testing.T) {
+func TestTabNetworkTraffic(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab1, err := testAuto.GetTab()
@@ -359,7 +340,7 @@ func TestTabNetworkListen(t *testing.T) {
 	responseHandlerFn := func(callerTab *Tab, response *NetworkResponse) {
 		t.Logf("got a network response: %#v\n", response)
 	}
-	if err := tab1.ListenNetworkTraffic(requestHandlerFn, responseHandlerFn); err != nil {
+	if err := tab1.GetNetworkTraffic(requestHandlerFn, responseHandlerFn); err != nil {
 		t.Fatalf("Error listening to network traffic: %s\n", err)
 	}
 	if _, err := tab1.Navigate(testServerAddr + "button.html"); err != nil {
@@ -383,11 +364,6 @@ func TestTabWindows(t *testing.T) {
 	}
 	if _, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
 		t.Fatalf("error opening first window")
-	}
-	t.Logf("# of elements: %d\n", len(tab.elements))
-	_, err = tab.GetDocument()
-	if err != nil {
-		t.Fatalf("error getting document from tab")
 	}
 	t.Logf("# of elements: %d\n", len(tab.elements))
 	ele, _, err := tab.GetElementById("mainwindow")

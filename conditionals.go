@@ -61,3 +61,13 @@ func ElementAttributeEquals(tab *Tab, element *Element, name, value string) Cond
 		return false
 	}
 }
+
+func ElementsBySelectorNotEmpty(tab *Tab, elementSelector string) ConditionalFunc {
+	return func(tab *Tab) bool {
+		eles, err := tab.GetElementsBySelector(elementSelector)
+		if err == nil && len(eles) > 0 {
+			return true
+		}
+		return false
+	}
+}

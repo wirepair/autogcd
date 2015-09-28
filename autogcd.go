@@ -28,6 +28,8 @@ import (
 	"sync"
 )
 
+var Debug = false
+
 type AutoGcd struct {
 	debugger *gcd.Gcd
 	settings *Settings
