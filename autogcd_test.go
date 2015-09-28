@@ -21,7 +21,7 @@ var (
 var testStartupFlags = []string{"--disable-new-tab-first-run", "--no-first-run", "--disable-popup-blocking"}
 
 func init() {
-	flag.StringVar(&testPath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to Xvfb")
+	flag.StringVar(&testPath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to chrome/chromium")
 	flag.StringVar(&testDir, "dir", "C:\\temp\\", "user directory")
 	flag.StringVar(&testPort, "port", "9222", "Debugger port")
 }
