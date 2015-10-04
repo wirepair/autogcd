@@ -59,16 +59,15 @@ func (e *InvalidDimensionsErr) Error() string {
 // If you need this information, wait for IsReady() to return true
 type Element struct {
 	attributes    map[string]string // dom attributes
-	nodeName      string
-	characterData string
-	nodeType      int
-	tab           *Tab            // reference to the containing tab
-	node          *gcdapi.DOMNode // the dom node, taken from the document
-	readyGate     chan struct{}
-	id            int  // nodeId in chrome
-	ready         bool // has this elements data been populated by setChildNodes or GetDocument?
-	invalidated   bool // has this node been invalidated (removed?)
-
+	nodeName      string            // the DOM tag name
+	characterData string            // the character data (if any, #text only)
+	nodeType      int               // the DOM nodeType
+	tab           *Tab              // reference to the containing tab
+	node          *gcdapi.DOMNode   // the dom node, taken from the document
+	readyGate     chan struct{}     // gate to close upon recieving all information from the debugger service
+	id            int               // nodeId in chrome
+	ready         bool              // has this elements data been populated by setChildNodes or GetDocument?
+	invalidated   bool              // has this node been invalidated (removed?)
 }
 
 func newElement(tab *Tab, nodeId int) *Element {
@@ -179,7 +178,7 @@ func (e *Element) GetFrameDocumentNodeId() (int, error) {
 	return -1, &IncorrectElementTypeErr{ExpectedName: "(i)frame", NodeName: e.nodeName}
 }
 
-// Returns the node id of this Element
+// Returns the underlying chrome debugger node id of this Element
 func (e *Element) NodeId() int {
 	return e.id
 }
@@ -348,6 +347,8 @@ func (e *Element) GetAttributes() (map[string]string, error) {
 	return e.attributes, nil
 }
 
+// Gets a single attribute by name, returns empty string if it does not exist
+// or is empty.
 func (e *Element) GetAttribute(name string) string {
 	attr, err := e.GetAttributes()
 	if err != nil {
@@ -390,6 +391,7 @@ func (e *Element) Click() error {
 	return e.tab.Click(x, y)
 }
 
+// Double clicks the center of the element.
 func (e *Element) DoubleClick() error {
 	x, y, err := e.getCenter()
 	if err != nil {
@@ -398,6 +400,7 @@ func (e *Element) DoubleClick() error {
 	return e.tab.DoubleClick(x, y)
 }
 
+// Focus on the element.
 func (e *Element) Focus() error {
 	_, err := e.tab.DOM.Focus(e.id)
 	return err
