@@ -108,7 +108,12 @@ func TestTabGetPageSource(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	_, err = tab.GetPageSource(0)
+	ele, err := tab.GetDocument()
+	if err != nil {
+		t.Fatalf("error getting tab document")
+	}
+	ele.WaitForReady()
+	_, err = tab.GetPageSource(ele.id)
 	if err != nil {
 		t.Fatalf("Error getting page source: %s\n", err)
 	}
@@ -127,6 +132,11 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	tab.Debug(true)
 	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "innerfr"))
+	if err != nil {
+		t.Fatalf("error waiting for ready state of innerfr: %s\n", err)
 	}
 	ele, _, err := tab.GetElementById("innerfr")
 	if err != nil {
@@ -191,9 +201,10 @@ func TestTabPromptHandler(t *testing.T) {
 	}
 
 	promptHandlerFn := func(theTab *Tab, message, promptType string) {
-		if promptType == "prompt" {
-			theTab.Page.HandleJavaScriptDialog(true, "someinput")
-		}
+		// promptType is only set in Chrome and not chromium? Works in Windows Chrome, not in linux Chromium.
+		// if promptType == "prompt" {
+		theTab.Page.HandleJavaScriptDialog(true, "someinput")
+		//}
 	}
 	tab.SetJavaScriptPromptHandler(promptHandlerFn)
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {

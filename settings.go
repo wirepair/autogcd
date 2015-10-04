@@ -52,6 +52,8 @@ func (s *Settings) AddStartupFlags(flags []string) {
 
 // Adds a custom extension to launch with chrome. Note this extension MAY NOT USE
 // the chrome.debugger API since you can not attach to a Tab twice with debuggers.
-func (s *Settings) AddExtension(path string) {
-	s.extensions = append(s.extensions, fmt.Sprintf("--load-extension=%s", path))
+func (s *Settings) AddExtension(paths []string) {
+	for _, ext := range paths {
+		s.extensions = append(s.extensions, fmt.Sprintf("--load-extension=%s", ext))
+	}
 }

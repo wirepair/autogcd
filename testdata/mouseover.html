@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>mouse over</title>
+<script>
+window.addEventListener('load', function() {
+	var buttz = document.getElementById("button");
+	buttz.addEventListener('mouseover', function() {
+		console.log('moused over');
+	});
+});
+</script>
+</head>
+<body>
+	<div>button click</div>
+	<button id="button">click me</button>
+</body>
+</html>

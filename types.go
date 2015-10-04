@@ -4,6 +4,28 @@ import (
 	"github.com/wirepair/gcd/gcdapi"
 )
 
+type NodeType uint8
+
+const (
+	ELEMENT_NODE                NodeType = 0x1
+	TEXT_NODE                   NodeType = 0x3
+	PROCESSING_INSTRUCTION_NODE NodeType = 0x7
+	COMMENT_NODE                NodeType = 0x8
+	DOCUMENT_NODE               NodeType = 0x9
+	DOCUMENT_TYPE_NODE          NodeType = 0x10
+	DOCUMENT_FRAGMENT_NODE      NodeType = 0x11
+)
+
+var nodeTypeMap = map[NodeType]string{
+	ELEMENT_NODE:                "ELEMENT_NODE",
+	TEXT_NODE:                   "TEXT_NODE",
+	PROCESSING_INSTRUCTION_NODE: "PROCESSING_INSTRUCTION_NODE",
+	COMMENT_NODE:                "COMMENT_NODE",
+	DOCUMENT_NODE:               "DOCUMENT_NODE",
+	DOCUMENT_TYPE_NODE:          "DOCUMENT_TYPE_NODE",
+	DOCUMENT_FRAGMENT_NODE:      "DOCUMENT_FRAGMENT_NODE",
+}
+
 type ChangeEventType uint16
 
 const (

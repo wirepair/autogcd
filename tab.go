@@ -407,7 +407,35 @@ func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
 	return t.GetDocumentElementsBySelector(t.topNodeId, selector)
 }
 
-// Get all elements that match a selector from the provided document node id.
+// Gets all elements of a child
+func (t *Tab) GetChildElements(element *Element) []*Element {
+	return t.GetChildElementsOfType(element, "*")
+}
+
+func (t *Tab) GetChildElementsOfType(element *Element, tagType string) []*Element {
+	elements := make([]*Element, 0)
+	t.recursivelyGetChildren(element.node.Children, &elements, tagType)
+	log.Printf("DONE GOT: %d for %s\n", len(elements), tagType)
+	return elements
+}
+
+func (t *Tab) recursivelyGetChildren(children []*gcdapi.DOMNode, elements *[]*Element, tagType string) {
+	//log.Printf("recursivelyGetchildren %d children", len(children))
+	for _, child := range children {
+		ele, ready := t.GetElementByNodeId(child.NodeId)
+		// only add if it's ready and tagType matches or tagType is *
+		if ready == true && (tagType == "*" || tagType == ele.nodeName) {
+			*elements = append(*elements, ele)
+		}
+		// not ready, or doesn't have children
+		if ready == false || ele.node.Children == nil || len(ele.node.Children) == 0 {
+			continue
+		}
+		t.recursivelyGetChildren(ele.node.Children, elements, tagType)
+	}
+}
+
+// Same as GetChildElementsBySelector
 func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*Element, error) {
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
@@ -455,6 +483,10 @@ func (t *Tab) GetDocumentCurrentUrl(docNodeId int) (string, error) {
 
 // Issues a left button mousePressed then mouseReleased on the x, y coords provided.
 func (t *Tab) Click(x, y int) error {
+	return t.click(x, y, 1)
+}
+
+func (t *Tab) click(x, y, clickCount int) error {
 	// "mousePressed", "mouseReleased", "mouseMoved"
 	// enum": ["none", "left", "middle", "right"]
 	pressed := "mousePressed"
@@ -462,8 +494,7 @@ func (t *Tab) Click(x, y int) error {
 	modifiers := 0
 	timestamp := 0.0
 	button := "left"
-	clickCount := 1
-
+	time.Now().Second()
 	if _, err := t.Input.DispatchMouseEvent(pressed, x, y, modifiers, timestamp, button, clickCount); err != nil {
 		return err
 	}
@@ -472,6 +503,15 @@ func (t *Tab) Click(x, y int) error {
 		return err
 	}
 	return nil
+}
+
+func (t *Tab) DoubleClick(x, y int) error {
+	return t.click(x, y, 2)
+}
+
+func (t *Tab) MoveMouse(x, y int) error {
+	_, err := t.Input.DispatchMouseEvent("mouseMoved", x, y, 0, 0.0, "none", 0)
+	return err
 }
 
 // Sends keystrokes to whatever is focused, best called from Element.SendKeys which will

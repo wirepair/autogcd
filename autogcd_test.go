@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -21,8 +22,14 @@ var (
 var testStartupFlags = []string{"--disable-new-tab-first-run", "--no-first-run", "--disable-popup-blocking"}
 
 func init() {
-	flag.StringVar(&testPath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to chrome/chromium")
-	flag.StringVar(&testDir, "dir", "C:\\temp\\", "user directory")
+	defaultChrome := "/usr/lib/chromium-browser/chromium-browser"
+	defaultDir := "/tmp"
+	if runtime.GOOS == "windows" {
+		defaultChrome = "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
+		defaultDir = "C:\\temp\\"
+	}
+	flag.StringVar(&testPath, "chrome", defaultChrome, "path to chrome/chromium")
+	flag.StringVar(&testDir, "dir", defaultDir, "user directory")
 	flag.StringVar(&testPort, "port", "9222", "Debugger port")
 }
 

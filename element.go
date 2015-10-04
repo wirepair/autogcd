@@ -151,7 +151,7 @@ func (e *Element) IsDocument() (bool, error) {
 	if !e.ready {
 		return false, &ElementNotReadyErr{}
 	}
-	return (e.nodeType == 9), nil
+	return (e.nodeType == int(DOCUMENT_NODE)), nil
 }
 
 // If this is a #document, returns the underlying chrome frameId.
@@ -379,27 +379,51 @@ func (e *Element) Clear() error {
 	return err
 }
 
-// Clicks the element in the center of the element.
+// Clicks the center of the element.
 func (e *Element) Click() error {
-	var x int
-	var y int
-
-	points, err := e.Dimensions()
+	x, y, err := e.getCenter()
 	if err != nil {
 		return err
 	}
 
-	x, y, err = centroid(points)
-	if err != nil {
-		return err
-	}
 	// click the centroid of the element.
 	return e.tab.Click(x, y)
+}
+
+func (e *Element) DoubleClick() error {
+	x, y, err := e.getCenter()
+	if err != nil {
+		return err
+	}
+	return e.tab.DoubleClick(x, y)
 }
 
 func (e *Element) Focus() error {
 	_, err := e.tab.DOM.Focus(e.id)
 	return err
+}
+
+// moves the mouse over the center of the element.
+func (e *Element) MouseOver() error {
+	x, y, err := e.getCenter()
+	if err != nil {
+		return err
+	}
+	return e.tab.MoveMouse(x, y)
+}
+
+// gets the center of the element
+func (e *Element) getCenter() (int, int, error) {
+	points, err := e.Dimensions()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	x, y, err := centroid(points)
+	if err != nil {
+		return 0, 0, err
+	}
+	return x, y, nil
 }
 
 // SendKeys - sends each individual character after focusing (clicking) on the element.
@@ -435,7 +459,7 @@ func (e *Element) String() string {
 		attrs = attrs + "\t" + key + "=" + value + "\n"
 	}
 	output = fmt.Sprintf("%s NodeType: %d TagName: %s characterData: %s childNodeCount: %d attributes (%d): \n%s", output, e.nodeType, e.nodeName, e.characterData, e.node.ChildNodeCount, len(e.attributes), attrs)
-	if e.nodeType == 9 {
+	if e.nodeType == int(DOCUMENT_NODE) {
 		output = fmt.Sprintf("%s FrameId: %s documentURL: %s\n", output, e.node.FrameId, e.node.DocumentURL)
 	}
 	//output = fmt.Sprintf("%s %#v", output, e.node)

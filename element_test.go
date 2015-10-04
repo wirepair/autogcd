@@ -104,6 +104,108 @@ func TestElementClick(t *testing.T) {
 	wg.Wait()
 }
 
+func TestElementMouseOver(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	tab.Debug(true)
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		t.Logf("Got message %v\n", message)
+		if message.Text == "moused over" {
+			callerTab.StopConsoleMessages(true)
+			wg.Done()
+		}
+	}
+	tab.GetConsoleMessages(msgHandler)
+
+	_, err = tab.Navigate(testServerAddr + "mouseover.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "button"))
+	if err != nil {
+		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+	}
+
+	button, _, err := tab.GetElementById("button")
+	if err != nil {
+		t.Fatalf("error finding buttons: %s\n", err)
+	}
+
+	err = button.MouseOver()
+	if err != nil {
+		t.Fatalf("error moving mouse over button: %s\n", err)
+	}
+
+	timeout := time.NewTimer(time.Second * 8)
+	go func() {
+		select {
+		case <-timeout.C:
+			t.Fatalf("timed out waiting for button click event message")
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestElementDoubleClick(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	//tab.Debug(true)
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		//t.Logf("Got message %v\n", message)
+		if message.Text == "double clicked" {
+			callerTab.StopConsoleMessages(true)
+			wg.Done()
+		}
+	}
+	tab.GetConsoleMessages(msgHandler)
+
+	_, err = tab.Navigate(testServerAddr + "dblclick.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "doubleclick"))
+	if err != nil {
+		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+	}
+
+	div, _, err := tab.GetElementById("doubleclick")
+	if err != nil {
+		t.Fatalf("error finding buttons: %s\n", err)
+	}
+
+	err = div.DoubleClick()
+	if err != nil {
+		t.Fatalf("error double clicking div: %s\n", err)
+	}
+
+	timeout := time.NewTimer(time.Second * 5)
+	go func(timeout *time.Timer) {
+		select {
+		case <-timeout.C:
+			t.Fatalf("timed out waiting for dblclick event message")
+		}
+	}(timeout)
+
+	wg.Wait()
+}
+
 func TestElementGetSource(t *testing.T) {
 	var ele []*Element
 	var src string
