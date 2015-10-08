@@ -129,7 +129,7 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
@@ -356,7 +356,7 @@ func TestTabNetworkTraffic(t *testing.T) {
 		t.Fatalf("Error listening to network traffic: %s\n", err)
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+	if _, err := tab1.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("error navigating to target: %s\n", err)
 	}
 
@@ -404,7 +404,7 @@ func TestTabAfterRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.GetTab()
-	//tab.ChromeTarget.DebugEvents(true)
+	//tab.Debug(true)
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -441,10 +441,24 @@ func TestTabAfterRedirect(t *testing.T) {
 	}
 
 	time.Sleep(4 * time.Second)
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "parent_redirect"))
+	if err != nil {
+		t.Fatalf("error waiting for ready state of parent_redirect: %s\n", err)
+	}
+
+	newEle, _, err := tab.GetElementById("parent_redirect")
+	if err != nil {
+		t.Fatalf("error getting child element: %s\n", err)
+	}
+	err = newEle.WaitForReady()
+	if err != nil {
+		t.Fatalf("error new element is not ready")
+	}
 	newUrl, err := tab.GetCurrentUrl()
 	if err != nil {
 		t.Fatalf("error getting url after redirect: %s\n", err)
 	}
+
 	if newUrl != testServerAddr+"redirect_target.html" {
 		t.Fatalf("url does not match redirect_target.html got: %s\n", newUrl)
 	}

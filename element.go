@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/wirepair/gcd/gcdapi"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -58,6 +59,7 @@ func (e *InvalidDimensionsErr) Error() string {
 // Certain actions require that the Element be populated (getting nodename/type)
 // If you need this information, wait for IsReady() to return true
 type Element struct {
+	lock          *sync.RWMutex     // for protecting read/write access to this Element
 	attributes    map[string]string // dom attributes
 	nodeName      string            // the DOM tag name
 	characterData string            // the character data (if any, #text only)
@@ -75,6 +77,7 @@ func newElement(tab *Tab, nodeId int) *Element {
 	e.tab = tab
 	e.attributes = make(map[string]string)
 	e.readyGate = make(chan struct{})
+	e.lock = &sync.RWMutex{}
 	e.id = nodeId
 	return e
 }
@@ -86,47 +89,63 @@ func newReadyElement(tab *Tab, node *gcdapi.DOMNode) *Element {
 	e.readyGate = make(chan struct{})
 	e.nodeName = strings.ToLower(node.NodeName)
 	e.id = node.NodeId
+	e.lock = &sync.RWMutex{}
 	e.populateElement(node)
 	return e
 }
 
 // populate the Element with node data.
 func (e *Element) populateElement(node *gcdapi.DOMNode) {
+	e.lock.Lock()
 	e.node = node
 	e.nodeType = node.NodeType
 	e.nodeName = strings.ToLower(node.NodeName)
+	e.lock.Unlock()
+
 	for i := 0; i < len(node.Attributes); i += 2 {
 		e.updateAttribute(node.Attributes[i], node.Attributes[i+1])
 	}
 
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	// close it
 	if !e.ready {
 		close(e.readyGate)
 	}
 	e.ready = true
+
 }
 
 // Has the Chrome Debugger notified us of this Elements data yet?
 func (e *Element) IsReady() bool {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	return (e.ready && !e.invalidated)
 }
 
 // Has the debugger invalidated (removed) the element from the DOM?
 func (e *Element) IsInvalid() bool {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	return e.invalidated
 }
 
 // The element has become invalid.
 func (e *Element) setInvalidated(invalid bool) {
+	e.lock.Lock()
 	e.invalidated = invalid
+	e.lock.Unlock()
 }
 
 // If we are ready, just return, if we are not, wait for the readyGate
 // to be closed or for the timeout timer to fird.
 func (e *Element) WaitForReady() error {
+	e.lock.RLock()
 	if e.ready {
+		e.lock.RUnlock()
 		return nil
 	}
+	e.lock.RUnlock()
 
 	timeout := time.NewTimer(e.tab.elementTimeout * time.Second)
 	select {
@@ -139,14 +158,21 @@ func (e *Element) WaitForReady() error {
 
 // Returns the outer html of the element.
 func (e *Element) GetSource() (string, error) {
+	e.lock.RLock()
+	id := e.id
+	e.lock.RUnlock()
+
 	if e.invalidated {
 		return "", &InvalidElementErr{}
 	}
-	return e.tab.DOM.GetOuterHTML(e.id)
+	return e.tab.DOM.GetOuterHTML(id)
 }
 
 // Is this Element a #document?
 func (e *Element) IsDocument() (bool, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return false, &ElementNotReadyErr{}
 	}
@@ -163,12 +189,16 @@ func (e *Element) FrameId() (string, error) {
 	if !isDoc {
 		return "", nil
 	}
-
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	return e.node.FrameId, nil
 }
 
 // If this element is a frame or iframe, return the ContentDocument node id
 func (e *Element) GetFrameDocumentNodeId() (int, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return -1, &ElementNotReadyErr{}
 	}
@@ -180,11 +210,17 @@ func (e *Element) GetFrameDocumentNodeId() (int, error) {
 
 // Returns the underlying chrome debugger node id of this Element
 func (e *Element) NodeId() int {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	return e.id
 }
 
 // Returns event listeners for the element, both static and dynamically bound.
 func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	rro, err := e.tab.DOM.ResolveNode(e.id, "")
 	if err != nil {
 		return nil, err
@@ -196,8 +232,12 @@ func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error
 	return eventListeners, nil
 }
 
-// Returns the underlying DOMNode for this element.
+// Returns the underlying DOMNode for this element. Note this is potentially
+// unsafe to access as we give up the ability to lock.
 func (e *Element) GetDebuggerDOMNode() (*gcdapi.DOMNode, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return nil, &ElementNotReadyErr{}
 	}
@@ -209,30 +249,44 @@ func (e *Element) GetDebuggerDOMNode() (*gcdapi.DOMNode, error) {
 
 // updates the attribute name/value pair
 func (e *Element) updateAttribute(name, value string) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
 	e.attributes[name] = value
 }
 
 // removes the attribute from our attributes list.
 func (e *Element) removeAttribute(name string) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
 	delete(e.attributes, name)
 }
 
 // updates character data
 func (e *Element) updateCharacterData(newValue string) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
 	e.characterData = newValue
 }
 
 // updates child node counts.
 func (e *Element) updateChildNodeCount(newValue int) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
 	e.node.ChildNodeCount = newValue
 }
 
 func (e *Element) addChild(child *gcdapi.DOMNode) {
+	e.lock.Lock()
 	if e.node.Children == nil {
 		e.node.Children = make([]*gcdapi.DOMNode, 0)
 	}
 	e.node.Children = append(e.node.Children, child)
 	e.node.ChildNodeCount++
+	e.lock.Unlock()
 }
 
 func (e *Element) addChildren(childNodes []*gcdapi.DOMNode) {
@@ -245,6 +299,10 @@ func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
 	var idx int
 	var child *gcdapi.DOMNode
 	childIdx := -1
+
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
 	if e.node == nil || e.node.Children == nil {
 		return
 	}
@@ -263,8 +321,11 @@ func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
 	e.node.ChildNodeCount = e.node.ChildNodeCount - 1
 }
 
-// Get child node ids, returns nil if node is not read
+// Get child node ids, returns nil if node is not ready
 func (e *Element) GetChildNodeIds() ([]int, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return nil, &ElementNotReadyErr{}
 	}
@@ -281,6 +342,9 @@ func (e *Element) GetChildNodeIds() ([]int, error) {
 
 // Returns the tag name (input, div etc) if the element is in a ready state.
 func (e *Element) GetTagName() (string, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return "", &ElementNotReadyErr{}
 	}
@@ -289,6 +353,9 @@ func (e *Element) GetTagName() (string, error) {
 
 // Returns the node type if the element is in a ready state.
 func (e *Element) GetNodeType() (int, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return -1, &ElementNotReadyErr{}
 	}
@@ -298,6 +365,9 @@ func (e *Element) GetNodeType() (int, error) {
 // Returns true if the node is enabled, only makes sense for form controls.
 // Element must be in a ready state.
 func (e *Element) IsEnabled() (bool, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	if !e.ready {
 		return false, &ElementNotReadyErr{}
 	}
@@ -315,7 +385,10 @@ func (e *Element) IsEnabled() (bool, error) {
 // Returns the CSS Style Text of the element, returns the inline style first
 // and the attribute style second, or error.
 func (e *Element) GetCssInlineStyleText() (string, string, error) {
+	e.lock.RLock()
 	inline, attribute, err := e.tab.CSS.GetInlineStylesForNode(e.id)
+	e.lock.RUnlock()
+
 	if err != nil {
 		return "", "", err
 	}
@@ -324,7 +397,10 @@ func (e *Element) GetCssInlineStyleText() (string, string, error) {
 
 // Returns all of the computed css styles in form of name value map.
 func (e *Element) GetComputedCssStyle() (map[string]string, error) {
+	e.lock.RLock()
 	styles, err := e.tab.CSS.GetComputedStyleForNode(e.id)
+	e.lock.RUnlock()
+
 	if err != nil {
 		return nil, err
 	}
@@ -337,13 +413,17 @@ func (e *Element) GetComputedCssStyle() (map[string]string, error) {
 
 // Get attributes of the node returning a map of name,value pairs.
 func (e *Element) GetAttributes() (map[string]string, error) {
+	e.lock.RLock()
 	attr, err := e.tab.DOM.GetAttributes(e.id)
+	e.lock.RUnlock()
+
 	if err != nil {
 		return nil, err
 	}
 	for i := 0; i < len(attr); i += 2 {
 		e.updateAttribute(attr[i], attr[i+1])
 	}
+
 	return e.attributes, nil
 }
 
@@ -361,6 +441,9 @@ func (e *Element) GetAttribute(name string) string {
 // or clears the value for textarea. This element must be ready so we can
 // properly read the nodeName value.
 func (e *Element) Clear() error {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	var err error
 
 	if !e.ready {
@@ -397,11 +480,15 @@ func (e *Element) DoubleClick() error {
 	if err != nil {
 		return err
 	}
+
 	return e.tab.DoubleClick(x, y)
 }
 
 // Focus on the element.
 func (e *Element) Focus() error {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
 	_, err := e.tab.DOM.Focus(e.id)
 	return err
 }
@@ -413,6 +500,20 @@ func (e *Element) MouseOver() error {
 		return err
 	}
 	return e.tab.MoveMouse(x, y)
+}
+
+// Returns the dimensions of the element.
+func (e *Element) Dimensions() ([]float64, error) {
+	var points []float64
+	e.lock.RLock()
+	box, err := e.tab.DOM.GetBoxModel(e.id)
+	e.lock.RUnlock()
+
+	if err != nil {
+		return nil, err
+	}
+	points = box.Content
+	return points, nil
 }
 
 // gets the center of the element
@@ -440,19 +541,10 @@ func (e *Element) SendKeys(text string) error {
 	return e.tab.SendKeys(text)
 }
 
-// Returns the dimensions of the element.
-func (e *Element) Dimensions() ([]float64, error) {
-	var points []float64
-	box, err := e.tab.DOM.GetBoxModel(e.id)
-	if err != nil {
-		return nil, err
-	}
-	points = box.Content
-	return points, nil
-}
-
 // Gnarly output mode activated
 func (e *Element) String() string {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	output := fmt.Sprintf("NodeId: %d Invalid: %t Ready: %t", e.id, e.invalidated, e.ready)
 	if !e.ready {
 		return output

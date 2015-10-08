@@ -8,6 +8,7 @@ import (
 	"github.com/wirepair/gcd/gcdapi"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -87,24 +88,24 @@ type ConditionalFunc func(tab *Tab) bool
 
 // Our tab object for driving a specific tab and gathering elements.
 type Tab struct {
-	*gcd.ChromeTarget                        // underlying chrometarget
-	eleMutex           *sync.RWMutex         // locks our elements when added/removed.
-	elements           map[int]*Element      // our map of elements for this tab
-	topNodeId          int                   // the nodeId of the current top level #document
-	topFrameId         string                // the frameId of the current top level #document
-	isNavigating       bool                  // are we currently navigating (between Page.Navigate -> page.loadEventFired)
-	isTransitioning    bool                  // has navigation occurred on the top frame (not due to Navigate() being called)
-	debug              bool                  // for debug printing
-	nodeChange         chan *NodeChangeEvent // for receiving node change events from tab_subscribers
-	navigationCh       chan int              // for receiving navigation complete messages while isNavigating is true
-	docUpdateCh        chan struct{}         // for receiving document update completion while isNavigating is true
-	setNodesWg         *sync.WaitGroup       // tracks setChildNode event calls when Navigating.
-	navigationTimeout  time.Duration         // amount of time to wait before failing navigation
-	elementTimeout     time.Duration         // amount of time to wait for element readiness
-	stabilityTimeout   time.Duration         // amount of time to give up waiting for stability
-	stableAfter        time.Duration         // amount of time of no activity to consider the DOM stable
-	lastNodeChangeTime time.Time             // timestamp of when the last node change occurred
-	domChangeHandler   DomChangeHandlerFunc  // allows the caller to be notified of DOM change events.
+	*gcd.ChromeTarget                           // underlying chrometarget
+	eleMutex              *sync.RWMutex         // locks our elements when added/removed.
+	elements              map[int]*Element      // our map of elements for this tab
+	topNodeId             int                   // the nodeId of the current top level #document
+	topFrameId            string                // the frameId of the current top level #document
+	isNavigating          bool                  // are we currently navigating (between Page.Navigate -> page.loadEventFired)
+	isTransitioning       bool                  // has navigation occurred on the top frame (not due to Navigate() being called)
+	debug                 bool                  // for debug printing
+	nodeChange            chan *NodeChangeEvent // for receiving node change events from tab_subscribers
+	navigationCh          chan int              // for receiving navigation complete messages while isNavigating is true
+	docUpdateCh           chan struct{}         // for receiving document update completion while isNavigating is true
+	setNodesWg            *sync.WaitGroup       // tracks setChildNode event calls when Navigating.
+	navigationTimeout     time.Duration         // amount of time to wait before failing navigation
+	elementTimeout        time.Duration         // amount of time to wait for element readiness
+	stabilityTimeout      time.Duration         // amount of time to give up waiting for stability
+	stableAfter           time.Duration         // amount of time of no activity to consider the DOM stable
+	lastNodeChangeTimeVal atomic.Value          // timestamp of when the last node change occurred atomic because multiple go routines will modify
+	domChangeHandler      DomChangeHandlerFunc  // allows the caller to be notified of DOM change events.
 }
 
 // Creates a new tab using the underlying ChromeTarget
@@ -321,9 +322,14 @@ func (t *Tab) WaitStable() error {
 			return &TimeoutErr{Message: "waiting for DOM stability"}
 		case <-stableCheck.C:
 			//log.Printf("stable check tick, lastnode change time %v", time.Now().Sub(t.lastNodeChangeTime))
-			if time.Now().Sub(t.lastNodeChangeTime) >= t.stableAfter {
-				//log.Printf("times up!")
-				return nil
+			if changeTime, ok := t.lastNodeChangeTimeVal.Load().(time.Time); ok {
+				if time.Now().Sub(changeTime) >= t.stableAfter {
+					//log.Printf("times up!")
+					return nil
+				}
+			} else {
+				// this should really, really never happen.
+				panic("autogcd WaitStable lastNodeChangeTime was not a time.Time")
 			}
 
 		}
@@ -910,7 +916,7 @@ func (t *Tab) listenDOMChanges() {
 			if t.domChangeHandler != nil {
 				t.domChangeHandler(t, nodeChangeEvent)
 			}
-			t.lastNodeChangeTime = time.Now()
+			t.lastNodeChangeTimeVal.Store(time.Now())
 		}
 	}
 }
@@ -942,11 +948,27 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 			t.requestChildNodes(change.NodeId, -1)
 		}
 	case ChildNodeInsertedEvent:
-		t.setNodesWg.Wait() // wait for parents to come in before we add child nodes
-		t.handleChildNodeInserted(change.ParentNodeId, change.Node)
+		go t.handleChildNodeInserted(change.ParentNodeId, change.Node)
 	case ChildNodeRemovedEvent:
 		t.handleChildNodeRemoved(change.ParentNodeId, change.NodeId)
 	}
+
+}
+
+// setChildNode event handling will add nodes to our elements map and update
+// the parent reference Children
+func (t *Tab) handleSetChildNodes(parentNodeId int, nodes []*gcdapi.DOMNode) {
+	for _, node := range nodes {
+		t.addNodes(node)
+	}
+	parent, ok := t.getElement(parentNodeId)
+	if ok {
+		if err := parent.WaitForReady(); err == nil {
+			parent.addChildren(nodes)
+		}
+	}
+	t.lastNodeChangeTimeVal.Store(time.Now())
+	t.setNodesWg.Done()
 
 }
 
@@ -971,24 +993,9 @@ func (t *Tab) handleDocumentUpdated() {
 	}
 }
 
-// setChildNode event handling will add nodes to our elements map and update
-// the parent reference Children
-func (t *Tab) handleSetChildNodes(parentNodeId int, nodes []*gcdapi.DOMNode) {
-	for _, node := range nodes {
-		t.addNodes(node)
-	}
-	parent, ok := t.getElement(parentNodeId)
-	if ok && parent.node != nil {
-		parent.addChildren(nodes)
-	}
-	t.lastNodeChangeTime = time.Now()
-	t.setNodesWg.Done()
-
-}
-
 // update parent with new child node and add nodes.
 func (t *Tab) handleChildNodeInserted(parentNodeId int, node *gcdapi.DOMNode) {
-	t.lastNodeChangeTime = time.Now()
+	t.lastNodeChangeTimeVal.Store(time.Now())
 	if node == nil {
 		return
 	}
@@ -996,9 +1003,12 @@ func (t *Tab) handleChildNodeInserted(parentNodeId int, node *gcdapi.DOMNode) {
 	t.addNodes(node)
 
 	parent, ok := t.getElement(parentNodeId)
-	if ok && parent.node != nil {
-		parent.addChild(node)
-		return
+	if ok {
+		// make sure we have the parent before we add children
+		if err := parent.WaitForReady(); err == nil {
+			parent.addChild(node)
+			return
+		}
 	}
 
 	t.debugf("unable to add child %d to parent %d because parent is not ready yet", parentNodeId, node.NodeId)
@@ -1012,9 +1022,11 @@ func (t *Tab) handleChildNodeRemoved(parentNodeId, nodeId int) {
 		return
 	}
 	ele.setInvalidated(true)
-	parent, ready := t.getElement(parentNodeId)
-	if ready && parent.node != nil {
-		parent.removeChild(ele.node)
+	parent, ok := t.getElement(parentNodeId)
+	if ok {
+		if err := parent.WaitForReady(); err == nil {
+			parent.removeChild(ele.node)
+		}
 	}
 	t.invalidateChildren(ele.node)
 
@@ -1114,7 +1126,7 @@ func (t *Tab) addNodes(node *gcdapi.DOMNode) {
 	if node.ContentDocument != nil {
 		t.addNodes(node.ContentDocument)
 	}
-	t.lastNodeChangeTime = time.Now()
+	t.lastNodeChangeTimeVal.Store(time.Now())
 }
 
 func (t *Tab) debugf(format string, args ...interface{}) {

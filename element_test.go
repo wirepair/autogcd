@@ -20,7 +20,7 @@ func TestElementDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
@@ -62,7 +62,7 @@ func TestElementClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "button.html")
 	if err != nil {
@@ -114,7 +114,7 @@ func TestElementMouseOver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Logf("Got message %v\n", message)
 		if message.Text == "moused over" {
@@ -128,11 +128,11 @@ func TestElementMouseOver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-
-	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "button"))
-	if err != nil {
-		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
-	}
+	/*
+		err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "button"))
+		if err != nil {
+			t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+		}*/
 
 	button, _, err := tab.GetElementById("button")
 	if err != nil {
@@ -216,7 +216,7 @@ func TestElementGetSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "button.html")
 	if err != nil {
@@ -254,7 +254,7 @@ func TestElementGetAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "attributes.html")
 	if err != nil {
@@ -312,7 +312,7 @@ func TestElementSendKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		//t.Logf("got message: %v\n", message)
@@ -356,7 +356,7 @@ func TestElementGetTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "attributes.html")
 	if err != nil {
@@ -393,7 +393,7 @@ func TestElementGetEventListeners(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "events.html")
 	if err != nil {
@@ -438,7 +438,7 @@ func TestElementFrameGetTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "innerfr"))
 	if err != nil {
@@ -480,7 +480,7 @@ func TestElementInvalidated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	_, err = tab.Navigate(testServerAddr + "invalidated.html")
 	if err != nil {
