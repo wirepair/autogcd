@@ -46,7 +46,7 @@ Four listener functions have been implemented, GetConsoleMessages, GetNetworkTra
 Pass in a ConsoleMessageFunc handler to begin receiving console messages from the tab. Use StopConsoleMessages to stop receiving them.
 
 #### GetNetworkTraffic
-Pass in either a NetworkRequestHandlerFunc or NetworkResponseHandlerFunc handler (or both) to receive network traffic events. Use StopNetworkTraffic to stop receiving them.
+Pass in either a NetworkRequestHandlerFunc, NetworkResponseHandlerFunc or NetworkFinishedHandlerFunc handler (or all three) to receive network traffic events. NetworkFinishedHandler's should be used to signal your application that it's safe to get the response body of the request. While calling GetResponseBody *may* work from NetworkResponseHandlerFunc, it will in many cases fail as the debugger service isn't ready to return the data yet. Use StopNetworkTraffic to stop receiving them.
 
 #### GetStorageEvents
 Pass in a StorageFunc handler to recieve cleared, removed, added and updated storage events. Use StopStorageEvents to stop receiving them.
