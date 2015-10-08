@@ -29,7 +29,7 @@ func init() {
 	flag.StringVar(&chromePath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to Xvfb")
 	flag.StringVar(&userDir, "dir", "C:\\temp\\", "user directory")
 	flag.StringVar(&chromePort, "port", "9222", "Debugger port")
-	flag.BoolVar(&debug, "debug", "false", "Show debug DOM node event changes")
+	flag.BoolVar(&debug, "debug", false, "Show debug DOM node event changes")
 }
 
 func main() {

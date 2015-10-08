@@ -73,6 +73,9 @@ type NetworkRequestHandlerFunc func(tab *Tab, request *NetworkRequest)
 // A function for handling network responses
 type NetworkResponseHandlerFunc func(tab *Tab, response *NetworkResponse)
 
+// A function for handling network finished, meaning it's safe to call Network.GetResponseBody
+type NetworkFinishedHandlerFunc func(tab *Tab, requestId string)
+
 // A function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
 type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 
@@ -206,7 +209,6 @@ func (t *Tab) documentWait(url string) error {
 	case <-timeoutTimer.C:
 		return &TimeoutErr{Message: "waiting for document updated failed for: " + url}
 	}
-
 	// wait for setChildNode events to complete.
 	t.setNodesWg.Wait()
 	return nil
@@ -730,8 +732,8 @@ func (t *Tab) StopConsoleMessages(shouldDisable bool) error {
 }
 
 // Listens to network traffic, either handler can be nil in which case we'll only call the handler defined.
-func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, responseHandlerFn NetworkResponseHandlerFunc) error {
-	if requestHandlerFn == nil && responseHandlerFn == nil {
+func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, responseHandlerFn NetworkResponseHandlerFunc, finishedHandlerFn NetworkFinishedHandlerFunc) error {
+	if requestHandlerFn == nil && responseHandlerFn == nil && finishedHandlerFn == nil {
 		return nil
 	}
 	_, err := t.Network.Enable()
@@ -760,6 +762,16 @@ func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, resp
 			}
 		})
 	}
+
+	if finishedHandlerFn != nil {
+		t.Subscribe("Network.loadingFinished", func(target *gcd.ChromeTarget, payload []byte) {
+			message := &gcdapi.NetworkLoadingFinishedEvent{}
+			if err := json.Unmarshal(payload, message); err == nil {
+				p := message.Params
+				finishedHandlerFn(t, p.RequestId)
+			}
+		})
+	}
 	return nil
 }
 
@@ -769,6 +781,7 @@ func (t *Tab) StopNetworkTraffic(shouldDisable bool) error {
 	var err error
 	t.Unsubscribe("Network.requestWillBeSent")
 	t.Unsubscribe("Network.responseReceived")
+	t.Unsubscribe("Network.loadingFinished")
 	if shouldDisable {
 		_, err = t.Network.Disable()
 	}
@@ -909,9 +922,7 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 		t.handleDocumentUpdated()
 	case SetChildNodesEvent:
 		t.setNodesWg.Add(1)
-		// while tempting, do not use a go routine for this, otherwise childnode events
-		// will come in before the parents exist (i speak from experience)
-		t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
+		go t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
 	case AttributeModifiedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateAttribute(change.Name, change.Value)
@@ -931,6 +942,7 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 			t.requestChildNodes(change.NodeId, -1)
 		}
 	case ChildNodeInsertedEvent:
+		t.setNodesWg.Wait() // wait for parents to come in before we add child nodes
 		t.handleChildNodeInserted(change.ParentNodeId, change.Node)
 	case ChildNodeRemovedEvent:
 		t.handleChildNodeRemoved(change.ParentNodeId, change.NodeId)
@@ -971,6 +983,7 @@ func (t *Tab) handleSetChildNodes(parentNodeId int, nodes []*gcdapi.DOMNode) {
 	}
 	t.lastNodeChangeTime = time.Now()
 	t.setNodesWg.Done()
+
 }
 
 // update parent with new child node and add nodes.

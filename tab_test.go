@@ -340,7 +340,8 @@ func TestTabTwoTabCookies(t *testing.T) {
 func TestTabNetworkTraffic(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab1, err := testAuto.GetTab()
+
+	tab1, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -351,12 +352,14 @@ func TestTabNetworkTraffic(t *testing.T) {
 	responseHandlerFn := func(callerTab *Tab, response *NetworkResponse) {
 		t.Logf("got a network response: %#v\n", response)
 	}
-	if err := tab1.GetNetworkTraffic(requestHandlerFn, responseHandlerFn); err != nil {
+	if err := tab1.GetNetworkTraffic(requestHandlerFn, responseHandlerFn, nil); err != nil {
 		t.Fatalf("Error listening to network traffic: %s\n", err)
 	}
-	if _, err := tab1.Navigate(testServerAddr + "button.html"); err != nil {
+
+	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("error navigating to target: %s\n", err)
 	}
+
 	tab2, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
@@ -364,6 +367,7 @@ func TestTabNetworkTraffic(t *testing.T) {
 	if _, err := tab2.Navigate(testServerAddr + "console_log.html"); err != nil {
 		t.Fatalf("error navigating to target: %s\n", err)
 	}
+
 }
 
 func TestTabWindows(t *testing.T) {
