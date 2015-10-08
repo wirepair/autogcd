@@ -377,6 +377,18 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 	return newEle, false
 }
 
+// Returns a copy of all currently known elements. Note that modifications to elements
+// maybe unsafe.
+func (t *Tab) GetAllElements() map[int]*Element {
+	t.eleMutex.RLock()
+	allElements := make(map[int]*Element, len(t.elements))
+	for k, v := range t.elements {
+		allElements[k] = v
+	}
+	t.eleMutex.RUnlock()
+	return allElements
+}
+
 // Returns the element by searching the top level document for an element with attributeId
 // Does not work on frames.
 func (t *Tab) GetElementById(attributeId string) (*Element, bool, error) {
@@ -414,8 +426,10 @@ func (t *Tab) GetChildElements(element *Element) []*Element {
 
 func (t *Tab) GetChildElementsOfType(element *Element, tagType string) []*Element {
 	elements := make([]*Element, 0)
+	if element == nil || element.node == nil || element.node.Children == nil {
+		return elements
+	}
 	t.recursivelyGetChildren(element.node.Children, &elements, tagType)
-	log.Printf("DONE GOT: %d for %s\n", len(elements), tagType)
 	return elements
 }
 
@@ -895,7 +909,9 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 		t.handleDocumentUpdated()
 	case SetChildNodesEvent:
 		t.setNodesWg.Add(1)
-		go t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
+		// while tempting, do not use a go routine for this, otherwise childnode events
+		// will come in before the parents exist (i speak from experience)
+		t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
 	case AttributeModifiedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateAttribute(change.Name, change.Value)
@@ -947,11 +963,10 @@ func (t *Tab) handleDocumentUpdated() {
 // the parent reference Children
 func (t *Tab) handleSetChildNodes(parentNodeId int, nodes []*gcdapi.DOMNode) {
 	for _, node := range nodes {
-
 		t.addNodes(node)
 	}
-	parent, ready := t.getElement(parentNodeId)
-	if ready {
+	parent, ok := t.getElement(parentNodeId)
+	if ok && parent.node != nil {
 		parent.addChildren(nodes)
 	}
 	t.lastNodeChangeTime = time.Now()
@@ -960,26 +975,32 @@ func (t *Tab) handleSetChildNodes(parentNodeId int, nodes []*gcdapi.DOMNode) {
 
 // update parent with new child node and add nodes.
 func (t *Tab) handleChildNodeInserted(parentNodeId int, node *gcdapi.DOMNode) {
+	t.lastNodeChangeTime = time.Now()
+	if node == nil {
+		return
+	}
 	t.debugf("child node inserted: id: %d\n", node.NodeId)
 	t.addNodes(node)
 
-	parent, ready := t.getElement(parentNodeId)
-	if ready {
+	parent, ok := t.getElement(parentNodeId)
+	if ok && parent.node != nil {
 		parent.addChild(node)
+		return
 	}
-	t.lastNodeChangeTime = time.Now()
+
+	t.debugf("unable to add child %d to parent %d because parent is not ready yet", parentNodeId, node.NodeId)
 }
 
 // update ParentNodeId to remove child and iterate over Children recursively and invalidate them.
 func (t *Tab) handleChildNodeRemoved(parentNodeId, nodeId int) {
-	t.debugf("child node REMOVED: %d\n", nodeId)
+	t.debugf("child node removed: %d\n", nodeId)
 	ele, ok := t.getElement(nodeId)
 	if !ok {
 		return
 	}
 	ele.setInvalidated(true)
 	parent, ready := t.getElement(parentNodeId)
-	if ready {
+	if ready && parent.node != nil {
 		parent.removeChild(ele.node)
 	}
 	t.invalidateChildren(ele.node)
@@ -1064,6 +1085,7 @@ func (t *Tab) getElement(nodeId int) (*Element, bool) {
 // Calls requestchild nodes for each node so we can receive setChildNode
 // events for even more nodes
 func (t *Tab) addNodes(node *gcdapi.DOMNode) {
+	t.debugf("addNode id: %d\n", node.NodeId)
 	newEle := t.nodeToElement(node)
 	t.eleMutex.Lock()
 	t.elements[newEle.id] = newEle
