@@ -535,6 +535,20 @@ func TestTabMultiTab(t *testing.T) {
 	wg.Wait()
 }
 
+func TestTabMissingParentElements(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	tab.Debug(true)
+	if _, err := tab.Navigate("http://yahoo.com"); err != nil {
+		t.Fatalf("error opening first window: %s\n", err)
+	}
+	tab.WaitStable()
+}
+
 func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 	var err error
 	var ele *Element

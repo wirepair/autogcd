@@ -91,15 +91,14 @@ type Tab struct {
 	*gcd.ChromeTarget                           // underlying chrometarget
 	eleMutex              *sync.RWMutex         // locks our elements when added/removed.
 	elements              map[int]*Element      // our map of elements for this tab
-	topNodeId             int                   // the nodeId of the current top level #document
-	topFrameId            string                // the frameId of the current top level #document
-	isNavigating          bool                  // are we currently navigating (between Page.Navigate -> page.loadEventFired)
-	isTransitioning       bool                  // has navigation occurred on the top frame (not due to Navigate() being called)
+	topNodeId             atomic.Value          // the nodeId of the current top level #document
+	topFrameId            atomic.Value          // the frameId of the current top level #document
+	isNavigatingFlag      atomic.Value          // are we currently navigating (between Page.Navigate -> page.loadEventFired)
+	isTransitioningFlag   atomic.Value          // has navigation occurred on the top frame (not due to Navigate() being called)
 	debug                 bool                  // for debug printing
 	nodeChange            chan *NodeChangeEvent // for receiving node change events from tab_subscribers
 	navigationCh          chan int              // for receiving navigation complete messages while isNavigating is true
 	docUpdateCh           chan struct{}         // for receiving document update completion while isNavigating is true
-	setNodesWg            *sync.WaitGroup       // tracks setChildNode event calls when Navigating.
 	navigationTimeout     time.Duration         // amount of time to wait before failing navigation
 	elementTimeout        time.Duration         // amount of time to wait for element readiness
 	stabilityTimeout      time.Duration         // amount of time to give up waiting for stability
@@ -114,10 +113,7 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.eleMutex = &sync.RWMutex{}
 	t.elements = make(map[int]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
-	t.isNavigating = false                 // for when Tab.Navigate() is called
-	t.isTransitioning = false              // for when an action or redirect causes the top level frame to navigate
 	t.navigationCh = make(chan int, 1)     // for signaling navigation complete
-	t.setNodesWg = &sync.WaitGroup{}       // wait for setChildNode events to complete
 	t.docUpdateCh = make(chan struct{})    // wait for documentUpdate to be called during navigation
 	t.navigationTimeout = 30 * time.Second // default 30 seconds for timeout
 	t.elementTimeout = 5 * time.Second     // default 5 seconds for waiting for element.
@@ -160,16 +156,63 @@ func (t *Tab) SetStabilityTime(stableAfter time.Duration) {
 	t.stableAfter = stableAfter
 }
 
+func (t *Tab) setIsNavigating(set bool) {
+	t.isNavigatingFlag.Store(set)
+}
+
+func (t *Tab) IsNavigating() bool {
+	if flag, ok := t.isNavigatingFlag.Load().(bool); ok {
+		return flag
+	}
+	return false
+}
+
+func (t *Tab) setIsTransitioning(set bool) {
+	t.isTransitioningFlag.Store(set)
+}
+
+// Returns true if we are transitioning to a new page. This is not set when Navigate is called.
+func (t *Tab) IsTransitioning() bool {
+	if flag, ok := t.isTransitioningFlag.Load().(bool); ok {
+		return flag
+	}
+	return false
+}
+
+func (t *Tab) setTopFrameId(topFrameId string) {
+	t.topFrameId.Store(topFrameId)
+}
+
+// Returns the top frame id of this tab
+func (t *Tab) GetTopFrameId() string {
+	if frameId, ok := t.topFrameId.Load().(string); ok {
+		return frameId
+	}
+	return ""
+}
+
+func (t *Tab) setTopNodeId(nodeId int) {
+	t.topNodeId.Store(nodeId)
+}
+
+// Returns the current top node id of this Tab.
+func (t *Tab) GetTopNodeId() int {
+	if topNodeId, ok := t.topNodeId.Load().(int); ok {
+		return topNodeId
+	}
+	return -1
+}
+
 // Navigates to a URL and does not return until the Page.loadEventFired event
 // as well as all setChildNode events have completed.
 // Returns the frameId of the Tab that this navigation occured on or error.
 func (t *Tab) Navigate(url string) (string, error) {
-	if t.isNavigating == true {
+	if t.IsNavigating() {
 		return "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
 	}
-	t.isNavigating = true
+	t.setIsNavigating(true)
 	defer func() {
-		t.isNavigating = false
+		t.setIsNavigating(false)
 	}()
 
 	frameId, err := t.Page.Navigate(url)
@@ -199,8 +242,8 @@ func (t *Tab) navigationWait(url string) error {
 	return nil
 }
 
-// Wait for document updated event from Tab.documentUpdated and setChildNode event processing
-// to finish so we have a valid set of elements. Timeout after two seconds if we never get a
+// Wait for document updated event from Tab.documentUpdated event processing to finish
+// so we have a valid set of elements. Timeout after two seconds if we never get a
 // document update event.
 func (t *Tab) documentWait(url string) error {
 	timeoutTimer := time.NewTimer(2 * time.Second)
@@ -210,14 +253,7 @@ func (t *Tab) documentWait(url string) error {
 	case <-timeoutTimer.C:
 		return &TimeoutErr{Message: "waiting for document updated failed for: " + url}
 	}
-	// wait for setChildNode events to complete.
-	t.setNodesWg.Wait()
 	return nil
-}
-
-// Returns true if we are transitioning to a new page. This is not set when Navigate is called.
-func (t *Tab) IsTransitioning() bool {
-	return t.isTransitioning
 }
 
 // Returns the current navigation index, history entries or error
@@ -350,16 +386,16 @@ func (t *Tab) getDocument() (*Element, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.topNodeId = doc.NodeId
-	t.topFrameId = doc.FrameId
-	t.debugf("got top nodeId %d", t.topNodeId)
+	t.setTopNodeId(doc.NodeId)
+	t.setTopFrameId(doc.FrameId)
+	t.debugf("got top nodeId %d", t.GetTopNodeId())
 	t.addNodes(doc)
 	eleDoc, _ := t.getElement(doc.NodeId)
 	return eleDoc, nil
 }
 
 func (t *Tab) GetDocument() (*Element, error) {
-	docEle, ok := t.getElement(t.topNodeId)
+	docEle, ok := t.getElement(t.GetTopNodeId())
 	if !ok {
 		return nil, &ElementNotFoundErr{Message: "top document node id not found."}
 	}
@@ -400,7 +436,7 @@ func (t *Tab) GetAllElements() map[int]*Element {
 // Returns the element by searching the top level document for an element with attributeId
 // Does not work on frames.
 func (t *Tab) GetElementById(attributeId string) (*Element, bool, error) {
-	return t.GetDocumentElementById(t.topNodeId, attributeId)
+	return t.GetDocumentElementById(t.GetTopNodeId(), attributeId)
 }
 
 // Returns an element from a specific Document.
@@ -424,7 +460,7 @@ func (t *Tab) GetDocumentElementById(docNodeId int, attributeId string) (*Elemen
 
 // Get all elements that match a selector from the top level document
 func (t *Tab) GetElementsBySelector(selector string) ([]*Element, error) {
-	return t.GetDocumentElementsBySelector(t.topNodeId, selector)
+	return t.GetDocumentElementsBySelector(t.GetTopNodeId(), selector)
 }
 
 // Gets all elements of a child
@@ -480,7 +516,7 @@ func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*
 // Returns the documents source, as visible, if docId is 0, returns top document source.
 func (t *Tab) GetPageSource(docNodeId int) (string, error) {
 	if docNodeId == 0 {
-		docNodeId = t.topNodeId
+		docNodeId = t.GetTopNodeId()
 	}
 	doc, ok := t.getElement(docNodeId)
 	if !ok {
@@ -491,7 +527,7 @@ func (t *Tab) GetPageSource(docNodeId int) (string, error) {
 
 // Returns the current url of the top level document
 func (t *Tab) GetCurrentUrl() (string, error) {
-	return t.GetDocumentCurrentUrl(t.topNodeId)
+	return t.GetDocumentCurrentUrl(t.GetTopNodeId())
 }
 
 // Returns the current url of the provided docNodeId
@@ -911,7 +947,7 @@ func (t *Tab) listenDOMChanges() {
 		select {
 		case nodeChangeEvent := <-t.nodeChange:
 			t.debugf("%s\n", nodeChangeEvent.EventType)
-			t.handleNodeChange(nodeChangeEvent)
+			go t.handleNodeChange(nodeChangeEvent)
 			// if the caller registered a dom change listener, call it
 			if t.domChangeHandler != nil {
 				t.domChangeHandler(t, nodeChangeEvent)
@@ -927,8 +963,7 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 	case DocumentUpdatedEvent:
 		t.handleDocumentUpdated()
 	case SetChildNodesEvent:
-		t.setNodesWg.Add(1)
-		go t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
+		t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
 	case AttributeModifiedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
 			ele.updateAttribute(change.Name, change.Value)
@@ -943,12 +978,13 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 		}
 	case ChildNodeCountUpdatedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
+			ele.WaitForReady()
 			ele.updateChildNodeCount(change.ChildNodeCount)
 			// request the child nodes
 			t.requestChildNodes(change.NodeId, -1)
 		}
 	case ChildNodeInsertedEvent:
-		go t.handleChildNodeInserted(change.ParentNodeId, change.Node)
+		t.handleChildNodeInserted(change.ParentNodeId, change.Node)
 	case ChildNodeRemovedEvent:
 		t.handleChildNodeRemoved(change.ParentNodeId, change.NodeId)
 	}
@@ -961,14 +997,13 @@ func (t *Tab) handleSetChildNodes(parentNodeId int, nodes []*gcdapi.DOMNode) {
 	for _, node := range nodes {
 		t.addNodes(node)
 	}
-	parent, ok := t.getElement(parentNodeId)
+	parent, ok := t.GetElementByNodeId(parentNodeId)
 	if ok {
 		if err := parent.WaitForReady(); err == nil {
 			parent.addChildren(nodes)
 		}
 	}
 	t.lastNodeChangeTimeVal.Store(time.Now())
-	t.setNodesWg.Done()
 
 }
 
@@ -986,9 +1021,10 @@ func (t *Tab) handleDocumentUpdated() {
 	}
 	t.elements = make(map[int]*Element)
 	t.eleMutex.Unlock()
+
 	t.documentUpdated()
 	// notify if navigating that we received the document update event.
-	if t.isNavigating == true {
+	if t.IsNavigating() {
 		t.docUpdateCh <- struct{}{} // notify listeners document was updated
 	}
 }
@@ -1002,19 +1038,21 @@ func (t *Tab) handleChildNodeInserted(parentNodeId int, node *gcdapi.DOMNode) {
 	t.debugf("child node inserted: id: %d\n", node.NodeId)
 	t.addNodes(node)
 
-	parent, ok := t.getElement(parentNodeId)
-	if ok {
-		// make sure we have the parent before we add children
-		if err := parent.WaitForReady(); err == nil {
-			parent.addChild(node)
-			return
-		}
+	parent, _ := t.GetElementByNodeId(parentNodeId)
+	// make sure we have the parent before we add children
+	if err := parent.WaitForReady(); err == nil {
+		parent.addChild(node)
+		return
+	} else {
+		t.debugf("err: %s\n", err)
 	}
 
-	t.debugf("unable to add child %d to parent %d because parent is not ready yet", parentNodeId, node.NodeId)
+	t.debugf("unable to add child %d to parent %d because parent is not ready yet", node.NodeId, parentNodeId)
 }
 
 // update ParentNodeId to remove child and iterate over Children recursively and invalidate them.
+// TODO: come up with a better way of removing children without direct access to the node
+// as it's a potential race condition if it's being modified.
 func (t *Tab) handleChildNodeRemoved(parentNodeId, nodeId int) {
 	t.debugf("child node removed: %d\n", nodeId)
 	ele, ok := t.getElement(nodeId)
@@ -1023,6 +1061,7 @@ func (t *Tab) handleChildNodeRemoved(parentNodeId, nodeId int) {
 	}
 	ele.setInvalidated(true)
 	parent, ok := t.getElement(parentNodeId)
+
 	if ok {
 		if err := parent.WaitForReady(); err == nil {
 			parent.removeChild(ele.node)
@@ -1112,6 +1151,7 @@ func (t *Tab) getElement(nodeId int) (*Element, bool) {
 func (t *Tab) addNodes(node *gcdapi.DOMNode) {
 	t.debugf("addNode id: %d\n", node.NodeId)
 	newEle := t.nodeToElement(node)
+
 	t.eleMutex.Lock()
 	t.elements[newEle.id] = newEle
 	t.eleMutex.Unlock()

@@ -219,9 +219,10 @@ func (e *Element) NodeId() int {
 // Returns event listeners for the element, both static and dynamically bound.
 func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error) {
 	e.lock.RLock()
-	defer e.lock.RUnlock()
+	id := e.id
+	e.lock.RUnlock()
 
-	rro, err := e.tab.DOM.ResolveNode(e.id, "")
+	rro, err := e.tab.DOM.ResolveNode(id, "")
 	if err != nil {
 		return nil, err
 	}

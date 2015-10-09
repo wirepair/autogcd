@@ -19,7 +19,7 @@ See the [examples](https://github.com/wirepair/autogcd/tree/master/examples) or 
 
 
 ## Notes
-The chrome debugger service uses internal nodeIds for identifying unique elements/nodes in the DOM. In most cases you will not need to use this identifier directly, however if you plan on calling gcdapi related features you will probably need it. The only common example of when you'll need them is for getting access to a nested #document element inside of an iframe. To run query selectors on nested documents, the nodeId of the iframe #document must be known.
+The chrome debugger service uses internal nodeIds for identifying unique elements/nodes in the DOM. In most cases you will not need to use this identifier directly, however if you plan on calling gcdapi related features you will probably need it. The most common example of when you'll need them is for getting access to a nested #document element inside of an iframe. To run query selectors on nested documents, the nodeId of the iframe #document must be known.
 
 
 ### Frames

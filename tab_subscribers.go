@@ -9,7 +9,7 @@ import (
 // our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
 func (t *Tab) subscribeLoadEvent() {
 	t.Subscribe("Page.loadEventFired", func(target *gcd.ChromeTarget, payload []byte) {
-		if t.isNavigating {
+		if t.IsNavigating() {
 			t.navigationCh <- 0
 		}
 	})
@@ -17,28 +17,28 @@ func (t *Tab) subscribeLoadEvent() {
 
 func (t *Tab) subscribeFrameLoadingEvent() {
 	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
-		if t.isNavigating {
+		if t.IsNavigating() {
 			return
 		}
 		header := &gcdapi.PageFrameStartedLoadingEvent{}
 		err := json.Unmarshal(payload, header)
 		// has the top frame id begun navigating?
-		if err == nil && header.Params.FrameId == t.topFrameId {
-			t.isTransitioning = true
+		if err == nil && header.Params.FrameId == t.GetTopFrameId() {
+			t.setIsTransitioning(true)
 		}
 	})
 }
 
 func (t *Tab) subscribeFrameFinishedEvent() {
 	t.Subscribe("Page.frameStoppedLoading", func(target *gcd.ChromeTarget, payload []byte) {
-		if t.isNavigating {
+		if t.IsNavigating() {
 			return
 		}
 		header := &gcdapi.PageFrameStoppedLoadingEvent{}
 		err := json.Unmarshal(payload, header)
 		// has the top frame id begun navigating?
-		if err == nil && header.Params.FrameId == t.topFrameId {
-			t.isTransitioning = false
+		if err == nil && header.Params.FrameId == t.GetTopFrameId() {
+			t.setIsTransitioning(false)
 		}
 	})
 }
