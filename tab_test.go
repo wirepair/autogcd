@@ -535,7 +535,51 @@ func TestTabMultiTab(t *testing.T) {
 	wg.Wait()
 }
 
-func TestTabMissingParentElements(t *testing.T) {
+func TestTabNavigationError(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	// test invalid domain name
+	if _, err := tab.Navigate("http://asdfasdf"); err != nil {
+		t.Fatalf("error opening first window: %s\n", err)
+	}
+	tab.WaitStable()
+	ret, failText := tab.DidNavigationFail()
+	if ret == false {
+		t.Fatalf("navigation should have failed but got false back\n")
+	} else {
+		t.Logf("nav error: %s\n", failText)
+	}
+
+	// test unopen port
+	if _, err := tab.Navigate("http://127.0.0.1:19145"); err != nil {
+		t.Fatalf("error opening window: %s\n", err)
+	}
+	tab.WaitStable()
+
+	ret, failText = tab.DidNavigationFail()
+	if ret == false {
+		t.Fatalf("navigation should have failed but got false back\n")
+	} else {
+		t.Logf("nav error: %s\n", failText)
+	}
+
+	// test valid site
+	if _, err := tab.Navigate(testServerAddr); err != nil {
+		t.Fatalf("error opening window: %s\n", err)
+	}
+	tab.WaitStable()
+
+	ret, failText = tab.DidNavigationFail()
+	if ret == true {
+		t.Fatalf("navigation should have succeeded but got error back: %s\n", failText)
+	}
+}
+
+func TestTabSslError(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.GetTab()
@@ -543,10 +587,21 @@ func TestTabMissingParentElements(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	tab.Debug(true)
-	if _, err := tab.Navigate("http://yahoo.com"); err != nil {
+	//tab.ChromeTarget.DebugEvents(true)
+	//tab.Network.Enable()
+	if _, err := tab.Navigate("https://173.194.123.39/"); err != nil {
 		t.Fatalf("error opening first window: %s\n", err)
 	}
-	tab.WaitStable()
+	//tab.WaitStable()
+	url, _ := tab.GetPageSource(0)
+	t.Logf("url: %s\n", url)
+	ret, failText := tab.DidNavigationFail()
+	if ret == false {
+		t.Fatalf("navigation should have failed but got false back\n")
+	} else {
+		t.Logf("nav error: %s\n", failText)
+	}
+
 }
 
 func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {

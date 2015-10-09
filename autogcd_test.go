@@ -19,7 +19,7 @@ var (
 	testServerAddr string
 )
 
-var testStartupFlags = []string{"--disable-new-tab-first-run", "--no-first-run", "--disable-popup-blocking"}
+var testStartupFlags = []string{"--test-type", "--ignore-certificate-errors", "--allow-running-insecure-content", "--disable-new-tab-first-run", "--no-first-run", "--disable-translate", "--safebrowsing-disable-auto-update", "--disable-component-update", "--safebrowsing-disable-download-protection"}
 
 func init() {
 	defaultChrome := "/usr/lib/chromium-browser/chromium-browser"

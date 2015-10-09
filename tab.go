@@ -229,6 +229,21 @@ func (t *Tab) Navigate(url string) (string, error) {
 	return frameId, err
 }
 
+// An undocumented method of determining if chrome failed to load
+// a page due to DNS or connection timeouts.
+func (t *Tab) DidNavigationFail() (bool, string) {
+	// if loadTimeData doesn't exist, we get an error, basically meaning no error occurred.
+	rro, err := t.EvaluateScript("loadTimeData.data_.errorCode")
+	if err != nil {
+		return false, ""
+	}
+	log.Printf("%#v\n", rro)
+	if rro.Type == "string" && rro.Value != "" {
+		return true, rro.Value
+	}
+	return false, ""
+}
+
 // Wait for Page.loadEventFired or timeout.
 func (t *Tab) navigationWait(url string) error {
 	timeoutTimer := time.NewTimer(t.navigationTimeout)
