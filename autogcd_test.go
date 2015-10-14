@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"testing"
+	"time"
 )
 
 var (
@@ -55,7 +56,7 @@ func TestStart(t *testing.T) {
 	if err := auto.Start(); err != nil {
 		t.Fatalf("failed to start chrome: %s\n", err)
 	}
-
+	auto.SetTerminationHandler(nil)
 }
 
 func TestGetTab(t *testing.T) {
@@ -72,7 +73,6 @@ func TestGetTab(t *testing.T) {
 	if tab.Target.Type != "page" {
 		t.Fatalf("Got tab but wasn't of type Page")
 	}
-
 }
 
 func TestNewTab(t *testing.T) {
@@ -118,6 +118,30 @@ func TestCloseTab(t *testing.T) {
 	}
 }
 
+func TestChromeTermination(t *testing.T) {
+	auto := testDefaultStartup(t)
+	doneCh := make(chan struct{})
+	shutdown := time.NewTimer(time.Second * 4)
+	timeout := time.NewTimer(time.Second * 10)
+	terminatedHandler := func(reason string) {
+		t.Logf("reason: %s\n", reason)
+		doneCh <- struct{}{}
+	}
+
+	auto.SetTerminationHandler(terminatedHandler)
+	for {
+		select {
+		case <-doneCh:
+			goto DONE
+		case <-shutdown.C:
+			auto.Shutdown()
+		case <-timeout.C:
+			t.Fatalf("timed out waiting for termination")
+		}
+	}
+DONE:
+}
+
 func testDefaultStartup(t *testing.T) *AutoGcd {
 	s := NewSettings(testPath, testRandomDir(t))
 	s.RemoveUserDir(true)
@@ -127,6 +151,7 @@ func testDefaultStartup(t *testing.T) *AutoGcd {
 	if err := auto.Start(); err != nil {
 		t.Fatalf("failed to start chrome: %s\n", err)
 	}
+	auto.SetTerminationHandler(nil) // do not want our tests to panic
 	return auto
 }
 

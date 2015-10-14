@@ -23,12 +23,11 @@ or rewriting links etc.
 package autogcd
 
 import (
+	"fmt"
 	"github.com/wirepair/gcd"
 	"os"
 	"sync"
 )
-
-var Debug = false
 
 type AutoGcd struct {
 	debugger *gcd.Gcd
@@ -43,7 +42,7 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 	auto.tabLock = &sync.RWMutex{}
 	auto.tabs = make(map[string]*Tab)
 	auto.debugger = gcd.NewChromeDebugger()
-
+	auto.debugger.SetTerminationHandler(auto.defaultTerminationHandler)
 	if len(settings.extensions) > 0 {
 		auto.debugger.AddFlags(settings.extensions)
 	}
@@ -57,6 +56,16 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 	}
 
 	return auto
+}
+
+// Default termination handling is to log, override with SetTerminationHandler
+func (auto *AutoGcd) defaultTerminationHandler(reason string) {
+	panic(fmt.Sprintf("chrome was terminated: %s\n", reason))
+}
+
+// Allow callers to handle chrome terminating.
+func (auto *AutoGcd) SetTerminationHandler(handler gcd.TerminatedHandler) {
+	auto.debugger.SetTerminationHandler(handler)
 }
 
 // Starts Google Chrome with debugging enabled.

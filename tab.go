@@ -61,6 +61,9 @@ func (e *TimeoutErr) Error() string {
 
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
+// Called when the tab crashes or the inspector was disconnected
+type TabDisconnectedHandler func(tab *Tab, reason string)
+
 // A function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
 // Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
 type PromptHandlerFunc func(tab *Tab, message, promptType string)
@@ -88,23 +91,25 @@ type ConditionalFunc func(tab *Tab) bool
 
 // Our tab object for driving a specific tab and gathering elements.
 type Tab struct {
-	*gcd.ChromeTarget                           // underlying chrometarget
-	eleMutex              *sync.RWMutex         // locks our elements when added/removed.
-	elements              map[int]*Element      // our map of elements for this tab
-	topNodeId             atomic.Value          // the nodeId of the current top level #document
-	topFrameId            atomic.Value          // the frameId of the current top level #document
-	isNavigatingFlag      atomic.Value          // are we currently navigating (between Page.Navigate -> page.loadEventFired)
-	isTransitioningFlag   atomic.Value          // has navigation occurred on the top frame (not due to Navigate() being called)
-	debug                 bool                  // for debug printing
-	nodeChange            chan *NodeChangeEvent // for receiving node change events from tab_subscribers
-	navigationCh          chan int              // for receiving navigation complete messages while isNavigating is true
-	docUpdateCh           chan struct{}         // for receiving document update completion while isNavigating is true
-	navigationTimeout     time.Duration         // amount of time to wait before failing navigation
-	elementTimeout        time.Duration         // amount of time to wait for element readiness
-	stabilityTimeout      time.Duration         // amount of time to give up waiting for stability
-	stableAfter           time.Duration         // amount of time of no activity to consider the DOM stable
-	lastNodeChangeTimeVal atomic.Value          // timestamp of when the last node change occurred atomic because multiple go routines will modify
-	domChangeHandler      DomChangeHandlerFunc  // allows the caller to be notified of DOM change events.
+	*gcd.ChromeTarget                            // underlying chrometarget
+	eleMutex              *sync.RWMutex          // locks our elements when added/removed.
+	elements              map[int]*Element       // our map of elements for this tab
+	topNodeId             atomic.Value           // the nodeId of the current top level #document
+	topFrameId            atomic.Value           // the frameId of the current top level #document
+	isNavigatingFlag      atomic.Value           // are we currently navigating (between Page.Navigate -> page.loadEventFired)
+	isTransitioningFlag   atomic.Value           // has navigation occurred on the top frame (not due to Navigate() being called)
+	debug                 bool                   // for debug printing
+	nodeChange            chan *NodeChangeEvent  // for receiving node change events from tab_subscribers
+	navigationCh          chan int               // for receiving navigation complete messages while isNavigating is true
+	docUpdateCh           chan struct{}          // for receiving document update completion while isNavigating is true
+	crashedCh             chan string            // the chrome tab crashed with a reason
+	disconnectedHandler   TabDisconnectedHandler // called with reason the chrome tab was disconnected from the debugger service
+	navigationTimeout     time.Duration          // amount of time to wait before failing navigation
+	elementTimeout        time.Duration          // amount of time to wait for element readiness
+	stabilityTimeout      time.Duration          // amount of time to give up waiting for stability
+	stableAfter           time.Duration          // amount of time of no activity to consider the DOM stable
+	lastNodeChangeTimeVal atomic.Value           // timestamp of when the last node change occurred atomic because multiple go routines will modify
+	domChangeHandler      DomChangeHandlerFunc   // allows the caller to be notified of DOM change events.
 }
 
 // Creates a new tab using the underlying ChromeTarget
@@ -115,6 +120,7 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.nodeChange = make(chan *NodeChangeEvent)
 	t.navigationCh = make(chan int, 1)     // for signaling navigation complete
 	t.docUpdateCh = make(chan struct{})    // wait for documentUpdate to be called during navigation
+	t.crashedCh = make(chan string)        // reason the tab crashed/was disconnected.
 	t.navigationTimeout = 30 * time.Second // default 30 seconds for timeout
 	t.elementTimeout = 5 * time.Second     // default 5 seconds for waiting for element.
 	t.stabilityTimeout = 2 * time.Second   // default 2 seconds before we give up waiting for stability
@@ -124,14 +130,23 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.DOM.Enable()
 	t.Console.Enable()
 	t.Debugger.Enable()
+	t.disconnectedHandler = t.defaultDisconnectedHandler
 	t.subscribeEvents()
-	go t.listenDOMChanges()
+	go t.listenDebuggerEvents()
 	return t
 }
 
 // Enable or disable internal debug printing
 func (t *Tab) Debug(enabled bool) {
 	t.debug = enabled
+}
+
+func (t *Tab) SetDisconnectedHandler(handlerFn TabDisconnectedHandler) {
+	t.disconnectedHandler = handlerFn
+}
+
+func (t *Tab) defaultDisconnectedHandler(tab *Tab, reason string) {
+	t.debugf("tab %s tabId: %s", reason, tab.ChromeTarget.Target.Id)
 }
 
 // How long to wait in seconds for navigations before giving up, default is 30 seconds
@@ -211,6 +226,8 @@ func (t *Tab) Navigate(url string) (string, error) {
 		return "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
 	}
 	t.setIsNavigating(true)
+	t.debugf("navigating to %s", url)
+
 	defer func() {
 		t.setIsNavigating(false)
 	}()
@@ -952,12 +969,16 @@ func (t *Tab) subscribeEvents() {
 	t.subscribeLoadEvent()
 	t.subscribeFrameLoadingEvent()
 	t.subscribeFrameFinishedEvent()
+
+	// Crash related
+	t.subscribeTargetCrashed()
+	t.subscribeTargetDetached()
 }
 
-// listens for NodeChangeEvents and dispatches them accordingly. Calls the user
-// defined domChangeHandler if bound. Updates the lastNodeChangeTime to the current
-// time.
-func (t *Tab) listenDOMChanges() {
+// listens for NodeChangeEvents and crash events and dispatches them accordingly.
+// Calls the user defined domChangeHandler if bound. Updates the lastNodeChangeTime
+// to the current time. If the target crashes or is detached, call the disconnectedHandler.
+func (t *Tab) listenDebuggerEvents() {
 	for {
 		select {
 		case nodeChangeEvent := <-t.nodeChange:
@@ -968,6 +989,10 @@ func (t *Tab) listenDOMChanges() {
 				t.domChangeHandler(t, nodeChangeEvent)
 			}
 			t.lastNodeChangeTimeVal.Store(time.Now())
+		case reason := <-t.crashedCh:
+			if t.disconnectedHandler != nil {
+				go t.disconnectedHandler(t, reason)
+			}
 		}
 	}
 }

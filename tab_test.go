@@ -587,21 +587,74 @@ func TestTabSslError(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	tab.Debug(true)
-	//tab.ChromeTarget.DebugEvents(true)
-	//tab.Network.Enable()
-	if _, err := tab.Navigate("https://173.194.123.39/"); err != nil {
+	// Test expired SSL certificate
+	// "--test-type", "--ignore-certificate-errors", should not return any errors
+	if _, err := tab.Navigate("https://expired.identrustssl.com/"); err != nil {
 		t.Fatalf("error opening first window: %s\n", err)
 	}
-	//tab.WaitStable()
-	url, _ := tab.GetPageSource(0)
-	t.Logf("url: %s\n", url)
+
 	ret, failText := tab.DidNavigationFail()
-	if ret == false {
-		t.Fatalf("navigation should have failed but got false back\n")
-	} else {
-		t.Logf("nav error: %s\n", failText)
+	t.Logf("ret: %t failText: %s\n", ret, failText)
+	if ret == true {
+		t.Fatalf("navigation should have succeeded but got failed back: %s\n", failText)
+	}
+	// Test invalid CN name
+	// example.com ip https://93.184.216.34/
+	// "--test-type", "--ignore-certificate-errors", should not return any errors
+	if _, err := tab.Navigate("https://93.184.216.34/"); err != nil {
+		t.Fatalf("error opening invalid cn host: %s\n", err)
 	}
 
+	ret, failText = tab.DidNavigationFail()
+	t.Logf("ret: %t failText: %s\n", ret, failText)
+	if ret == true {
+		t.Fatalf("navigation should have succeeded but got failed back: %s\n", failText)
+	}
+}
+
+func TestTabChromeTabCrash(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	timeout := time.NewTimer(time.Second * 10)
+	doneCh := make(chan struct{})
+	handlerFn := func(tab *Tab, reason string) {
+		doneCh <- struct{}{}
+	}
+
+	go func() {
+		<-timeout.C
+		t.Fatalf("timed out waiting for termination event")
+	}()
+
+	tab.SetDisconnectedHandler(handlerFn)
+	if _, err := tab.Navigate("chrome://crash"); err == nil {
+		t.Fatalf("crash window did not cause error\n")
+	}
+	<-doneCh
+}
+
+func TestTabChromeUnhandledCrash(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+	tab, err := testAuto.GetTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	timeout := time.NewTimer(time.Second * 10)
+	tab.Debug(true)
+	go func() {
+		<-timeout.C
+		t.Fatalf("timed out waiting for termination event")
+	}()
+
+	tab.SetNavigationTimeout(10 * time.Second)
+	if _, err := tab.Navigate("chrome://crash"); err == nil {
+		t.Fatalf("error opening crash did not return error\n")
+	}
 }
 
 func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {

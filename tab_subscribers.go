@@ -6,6 +6,24 @@ import (
 	"github.com/wirepair/gcd/gcdapi"
 )
 
+func (t *Tab) subscribeTargetCrashed() {
+	t.Subscribe("Inspector.targetCrashed", func(target *gcd.ChromeTarget, payload []byte) {
+		t.crashedCh <- "crashed"
+	})
+}
+
+func (t *Tab) subscribeTargetDetached() {
+	t.Subscribe("Inspector.detached", func(target *gcd.ChromeTarget, payload []byte) {
+		header := &gcdapi.InspectorDetachedEvent{}
+		err := json.Unmarshal(payload, header)
+		if err == nil {
+			t.crashedCh <- header.Params.Reason
+		} else {
+			t.crashedCh <- "detached"
+		}
+	})
+}
+
 // our default loadFiredEvent handler, returns a response to resp channel to navigate once complete.
 func (t *Tab) subscribeLoadEvent() {
 	t.Subscribe("Page.loadEventFired", func(target *gcd.ChromeTarget, payload []byte) {

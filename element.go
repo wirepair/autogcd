@@ -307,6 +307,7 @@ func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
 	if e.node == nil || e.node.Children == nil {
 		return
 	}
+
 	for idx, child = range e.node.Children {
 		if child.NodeId == removedNode.NodeId {
 			childIdx = idx
@@ -383,6 +384,22 @@ func (e *Element) IsEnabled() (bool, error) {
 	return true, nil
 }
 
+// Simulate WebDrivers checked propertyname check
+func (e *Element) IsSelected() (bool, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
+	if !e.ready {
+		return false, &ElementNotReadyErr{}
+	}
+
+	checked, ok := e.attributes["checked"]
+	if ok == true && checked != "false" {
+		return true, nil
+	}
+	return false, nil
+}
+
 // Returns the CSS Style Text of the element, returns the inline style first
 // and the attribute style second, or error.
 func (e *Element) GetCssInlineStyleText() (string, string, error) {
@@ -436,6 +453,18 @@ func (e *Element) GetAttribute(name string) string {
 		return ""
 	}
 	return attr[name]
+}
+
+// Similar to above but works for boolean properties (checked, async etc)
+// Returns true if the attribute is set in our known list of attributes
+// for this element.
+func (e *Element) HasAttribute(name string) bool {
+	attr, err := e.GetAttributes()
+	if err != nil {
+		return false
+	}
+	_, exists := attr[name]
+	return exists
 }
 
 // Works like WebDriver's clear(), simply sets the attribute value for input
