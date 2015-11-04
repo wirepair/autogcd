@@ -36,7 +36,7 @@ Finally, you can use the tab.WaitFor method, which takes a ConditionalFunc type 
 For example/simple ConditionalFuncs see the [conditionals.go](https://github.com/wirepair/autogcd/tree/master/conditionals.go) source. Of course you can use whatever you want as long as it matches the ConditionalFunc signature.
 
 ### Navigation Errors
-Unlike webdriver, we can actually determine if navigation fails. After tab.Navigate(url), calling tab.DidNavigationFail() will return a true/false return value along with a string of the failure type if one did occur. It is strongly recommended you pass the following flags: --test-type, --ignore-certificate-errors on start up of autogcd. This will allow us to use the above method to detect ssl related navigation failures.
+Unlike webdriver, we can actually determine if navigation fails. After tab.Navigate(url), calling tab.DidNavigationFail() will return a true/false return value along with a string of the failure type if one did occur. It is strongly recommended you pass the following flags: --test-type, --ignore-certificate-errors on start up of autogcd if you wish to ignore certificate errors.
 
 ### Input
 Only a limited set of input functions have been implemented. Clicking and sending keys. You can use Element.SendKeys() or send the keys to whatever is focused by using Tab.SendKeys(). Only Enter ("\n"), Tab ("\t") and Backspace ("\b") were implemented, to use them, simply add them to your SendKeys argument Element.SendKeys("enter text hit enter\n") where \n will cause the enter key to be pressed. 
