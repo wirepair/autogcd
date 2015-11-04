@@ -6,8 +6,8 @@ autogcd requires [gcd](https://github.com/wirepair/gcd/), [gcdapi](https://githu
 
 ## The API
 Autogcd is comprised of four components:
-* autogcd - The wrapper around gcd.Gcd. 
-* settings - For managing startup of autogcd.
+* AutoGcd - The wrapper around gcd.Gcd. 
+* Settings - For managing startup of autogcd.
 * Tab - Individual chrome tabs
 * Element - Elements that make up the Page
 
@@ -23,7 +23,7 @@ The chrome debugger service uses internal nodeIds for identifying unique element
 
 
 ### Frames
-If you need to search elements (by id or by a selector) of a frame's #document, you'll need to get an Element reference that is the iframe's #document. This can be done by doing a tab.GetElementsBySelector("iframe"), iterating over them and calling element.GetFrameDocumentNodeId(). This will return the internal document node id which you can then pass to tab.GetDocumentElementsBySelector(iframeDocNodeId, "#whatever").
+If you need to search elements (by id or by a selector) of a frame's #document, you'll need to get an Element reference that is the iframe's #document. This can be done by doing a tab.GetElementsBySelector("iframe"), iterating over the results and calling element.GetFrameDocumentNodeId(). This will return the internal document node id which you can then pass to tab.GetDocumentElementsBySelector(iframeDocNodeId, "#whatever").
 
 ### Windows
 The major limitation of using the Google Chrome Remote Debugger is when working with windows. Since each tab must have the debugger enabled, calls to window.open will open a new window prior to us being able to attach a debugger. To get around this, you'll need to get a list of tabs AutoGcd.GetAllTabs(), then call AutoGcd.RefreshTabList() which will connect each tab to an autogcd.Tab. You'd then need to reload the tab get begin working with it. 
@@ -33,7 +33,12 @@ There are a few ways you can test for stability or if an Element is ready. Eleme
 
 Finally, you can use the tab.WaitFor method, which takes a ConditionalFunc type and repeatedly calls it until it returns true, or times out.
 
-For example/simple ConditionalFuncs see the [conditionals.go](https://github.com/wirepair/autogcd/tree/master/conditionals.go) source. Of course you can use whatever you want as long as it matches the ConditionalFunc prototype.
+For example/simple ConditionalFuncs see the [conditionals.go](https://github.com/wirepair/autogcd/tree/master/conditionals.go) source. Of course you can use whatever you want as long as it matches the ConditionalFunc signature.
+
+### Navigation Errors
+Unlike webdriver, we can actually determine if navigation fails. After tab.Navigate(url), calling tab.DidNavigationFail() will return a true/false return value along with a string of the failure type if one did occur.
+
+### SSL Errors
 
 
 ### Input
@@ -46,7 +51,7 @@ Four listener functions have been implemented, GetConsoleMessages, GetNetworkTra
 Pass in a ConsoleMessageFunc handler to begin receiving console messages from the tab. Use StopConsoleMessages to stop receiving them.
 
 #### GetNetworkTraffic
-Pass in either a NetworkRequestHandlerFunc, NetworkResponseHandlerFunc or NetworkFinishedHandlerFunc handler (or all three) to receive network traffic events. NetworkFinishedHandler's should be used to signal your application that it's safe to get the response body of the request. While calling GetResponseBody *may* work from NetworkResponseHandlerFunc, it will in many cases fail as the debugger service isn't ready to return the data yet. Use StopNetworkTraffic to stop receiving them.
+Pass in either a NetworkRequestHandlerFunc, NetworkResponseHandlerFunc or NetworkFinishedHandlerFunc handler (or all three) to receive network traffic events. NetworkFinishedHandler should be used to signal your application that it's safe to get the response body of the request. While calling GetResponseBody *may* work from NetworkResponseHandlerFunc, it will in many cases fail as the debugger service isn't ready to return the data yet. Use StopNetworkTraffic to stop receiving them.
 
 #### GetStorageEvents
 Pass in a StorageFunc handler to recieve cleared, removed, added and updated storage events. Use StopStorageEvents to stop receiving them.

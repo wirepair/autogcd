@@ -23,14 +23,17 @@ var (
 var testStartupFlags = []string{"--test-type", "--ignore-certificate-errors", "--allow-running-insecure-content", "--disable-new-tab-first-run", "--no-first-run", "--disable-translate", "--safebrowsing-disable-auto-update", "--disable-component-update", "--safebrowsing-disable-download-protection"}
 
 func init() {
-	defaultChrome := "/usr/lib/chromium-browser/chromium-browser"
-	defaultDir := "/tmp"
-	if runtime.GOOS == "windows" {
-		defaultChrome = "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-		defaultDir = "C:\\temp\\"
+	switch runtime.GOOS {
+	case "windows":
+		flag.StringVar(&testPath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to chrome")
+		flag.StringVar(&testDir, "dir", "C:\\temp\\", "user directory")
+	case "darwin":
+		flag.StringVar(&testPath, "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "path to chrome")
+		flag.StringVar(&testDir, "dir", "/tmp/", "user directory")
+	case "linux":
+		flag.StringVar(&testPath, "chrome", "/usr/bin/chromium-browser", "path to chrome")
+		flag.StringVar(&testDir, "dir", "/tmp/", "user directory")
 	}
-	flag.StringVar(&testPath, "chrome", defaultChrome, "path to chrome/chromium")
-	flag.StringVar(&testDir, "dir", defaultDir, "user directory")
 	flag.StringVar(&testPort, "port", "9222", "Debugger port")
 }
 

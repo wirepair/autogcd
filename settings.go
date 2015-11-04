@@ -1,3 +1,27 @@
+/*
+The MIT License (MIT)
+
+Copyright (c) 2015 isaac dawson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
 package autogcd
 
 import (
@@ -28,14 +52,17 @@ func NewSettings(chromePath, userDir string) *Settings {
 	return s
 }
 
+// Can really only be localhost, but this may change in the future so support it anyways.
 func (s *Settings) SetChromeHost(host string) {
 	s.chromeHost = host
 }
 
+// Sets the chrome debugger port.
 func (s *Settings) SetDebuggerPort(chromePort string) {
 	s.chromePort = chromePort
 }
 
+// How long to wait for chrome to startup and allow us to connect.
 func (s *Settings) SetStartTimeout(timeout time.Duration) {
 	s.timeout = timeout
 }
@@ -51,7 +78,7 @@ func (s *Settings) AddStartupFlags(flags []string) {
 }
 
 // Adds a custom extension to launch with chrome. Note this extension MAY NOT USE
-// the chrome.debugger API since you can not attach to a Tab twice with debuggers.
+// the chrome.debugger API since you can not attach debuggers to a Tab twice.
 func (s *Settings) AddExtension(paths []string) {
 	for _, ext := range paths {
 		s.extensions = append(s.extensions, fmt.Sprintf("--load-extension=%s", ext))

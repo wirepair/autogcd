@@ -1,3 +1,27 @@
+/*
+The MIT License (MIT)
+
+Copyright (c) 2015 isaac dawson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
 package autogcd
 
 import (
@@ -207,6 +231,7 @@ func (t *Tab) GetTopFrameId() string {
 }
 
 func (t *Tab) setTopNodeId(nodeId int) {
+	t.debugf("setting topNodeId: %d\n", nodeId)
 	t.topNodeId.Store(nodeId)
 }
 
@@ -215,6 +240,7 @@ func (t *Tab) GetTopNodeId() int {
 	if topNodeId, ok := t.topNodeId.Load().(int); ok {
 		return topNodeId
 	}
+	t.debugf("failed getting int from topNodeId")
 	return -1
 }
 
@@ -222,6 +248,7 @@ func (t *Tab) GetTopNodeId() int {
 // as well as all setChildNode events have completed.
 // Returns the frameId of the Tab that this navigation occured on or error.
 func (t *Tab) Navigate(url string) (string, error) {
+
 	if t.IsNavigating() {
 		return "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
 	}
@@ -236,7 +263,7 @@ func (t *Tab) Navigate(url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
+	t.lastNodeChangeTimeVal.Store(time.Now())
 	err = t.navigationWait(url)
 	if err != nil {
 		return frameId, err
@@ -249,12 +276,11 @@ func (t *Tab) Navigate(url string) (string, error) {
 // An undocumented method of determining if chrome failed to load
 // a page due to DNS or connection timeouts.
 func (t *Tab) DidNavigationFail() (bool, string) {
-	// if loadTimeData doesn't exist, we get an error, basically meaning no error occurred.
+	// if loadTimeData doesn't exist, we get a js error, basically meaning no error occurred.
 	rro, err := t.EvaluateScript("loadTimeData.data_.errorCode")
 	if err != nil {
 		return false, ""
 	}
-	log.Printf("%#v\n", rro)
 	if rro.Type == "string" && rro.Value != "" {
 		return true, rro.Value
 	}
@@ -389,10 +415,9 @@ func (t *Tab) WaitStable() error {
 		case <-timeoutTimer.C:
 			return &TimeoutErr{Message: "waiting for DOM stability"}
 		case <-stableCheck.C:
-			//log.Printf("stable check tick, lastnode change time %v", time.Now().Sub(t.lastNodeChangeTime))
 			if changeTime, ok := t.lastNodeChangeTimeVal.Load().(time.Time); ok {
 				if time.Now().Sub(changeTime) >= t.stableAfter {
-					//log.Printf("times up!")
+					// times up!
 					return nil
 				}
 			} else {
@@ -418,9 +443,10 @@ func (t *Tab) getDocument() (*Element, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	t.setTopNodeId(doc.NodeId)
 	t.setTopFrameId(doc.FrameId)
-	t.debugf("got top nodeId %d", t.GetTopNodeId())
+
 	t.addNodes(doc)
 	eleDoc, _ := t.getElement(doc.NodeId)
 	return eleDoc, nil
@@ -500,6 +526,7 @@ func (t *Tab) GetChildElements(element *Element) []*Element {
 	return t.GetChildElementsOfType(element, "*")
 }
 
+// Returns all elements of a specific tag type.
 func (t *Tab) GetChildElementsOfType(element *Element, tagType string) []*Element {
 	elements := make([]*Element, 0)
 	if element == nil || element.node == nil || element.node.Children == nil {
@@ -510,7 +537,6 @@ func (t *Tab) GetChildElementsOfType(element *Element, tagType string) []*Elemen
 }
 
 func (t *Tab) recursivelyGetChildren(children []*gcdapi.DOMNode, elements *[]*Element, tagType string) {
-	//log.Printf("recursivelyGetchildren %d children", len(children))
 	for _, child := range children {
 		ele, ready := t.GetElementByNodeId(child.NodeId)
 		// only add if it's ready and tagType matches or tagType is *
@@ -595,10 +621,12 @@ func (t *Tab) click(x, y, clickCount int) error {
 	return nil
 }
 
+// Issues a double click on the x, y coords provided.
 func (t *Tab) DoubleClick(x, y int) error {
 	return t.click(x, y, 2)
 }
 
+// Moves the mouse to the x, y coords provided.
 func (t *Tab) MoveMouse(x, y int) error {
 	_, err := t.Input.DispatchMouseEvent("mouseMoved", x, y, 0, 0.0, "none", 0)
 	return err
@@ -672,9 +700,11 @@ func (t *Tab) pressSystemKey(systemKey string) error {
 	return nil
 }
 
-// Injects custom javascript prior to the page loading on all frames. Returns scriptId which can be
-// used to remove the script. Since this loads on all frames, if you only want the script to interact with the
-// top document, you'll need to do checks in the injected script such as testing location.href.
+// Injects custom javascript prior to the page loading on all frames. Returns scriptId which
+// can be used to remove the script. Since this loads on all frames, if you only want the
+// script to interact with the top document, you'll need to do checks in the injected script
+// such as testing location.href.
+//
 // Alternatively, you can use Tab.EvaluateScript to only work on the global context.
 func (t *Tab) InjectScriptOnLoad(scriptSource string) (string, error) {
 	scriptId, err := t.Page.AddScriptToEvaluateOnLoad(scriptSource)
@@ -953,7 +983,6 @@ func (t *Tab) defaultConsoleMessageAdded(fn ConsoleMessageFunc) GcdResponseFunc 
 // see tab_subscribers.go
 func (t *Tab) subscribeEvents() {
 	// DOM Related
-
 	t.subscribeSetChildNodes()
 	t.subscribeAttributeModified()
 	t.subscribeAttributeRemoved()
@@ -961,9 +990,10 @@ func (t *Tab) subscribeEvents() {
 	t.subscribeChildNodeCountUpdated()
 	t.subscribeChildNodeInserted()
 	t.subscribeChildNodeRemoved()
+	t.subscribeDocumentUpdated()
+
 	// This doesn't seem useful.
 	// t.subscribeInlineStyleInvalidated()
-	t.subscribeDocumentUpdated()
 
 	// Navigation Related
 	t.subscribeLoadEvent()
@@ -1069,7 +1099,7 @@ func (t *Tab) handleDocumentUpdated() {
 	}
 }
 
-// update parent with new child node and add nodes.
+// update parent with new child node and add the new nodes.
 func (t *Tab) handleChildNodeInserted(parentNodeId int, node *gcdapi.DOMNode) {
 	t.lastNodeChangeTimeVal.Store(time.Now())
 	if node == nil {
@@ -1176,7 +1206,7 @@ func (t *Tab) nodeToElement(node *gcdapi.DOMNode) *Element {
 	return newEle
 }
 
-// safely returns the element by looking it up by nodeId
+// safely returns the element by looking it up by nodeId from our internal map.
 func (t *Tab) getElement(nodeId int) (*Element, bool) {
 	t.eleMutex.RLock()
 	defer t.eleMutex.RUnlock()

@@ -5,6 +5,7 @@ import (
 	"github.com/wirepair/autogcd"
 	"io/ioutil"
 	"log"
+	"runtime"
 	"time"
 )
 
@@ -26,8 +27,17 @@ var stableAfter = time.Millisecond * 450
 var stabilityTimeout = time.Second * 2
 
 func init() {
-	flag.StringVar(&chromePath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to Xvfb")
-	flag.StringVar(&userDir, "dir", "C:\\temp\\", "user directory")
+	switch runtime.GOOS {
+	case "windows":
+		flag.StringVar(&chromePath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to chrome")
+		flag.StringVar(&userDir, "dir", "C:\\temp\\", "user directory")
+	case "darwin":
+		flag.StringVar(&chromePath, "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "path to chrome")
+		flag.StringVar(&userDir, "dir", "/tmp/", "user directory")
+	case "linux":
+		flag.StringVar(&chromePath, "chrome", "/usr/bin/chromium-browser", "path to chrome")
+		flag.StringVar(&userDir, "dir", "/tmp/", "user directory")
+	}
 	flag.StringVar(&chromePort, "port", "9222", "Debugger port")
 	flag.BoolVar(&debug, "debug", false, "Show debug DOM node event changes")
 }
@@ -69,6 +79,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error sending keys to element: %s\n", err)
 	}
+
 	err = tab.WaitFor(waitForRate, waitForTimeout, autogcd.TitleContains(tab, "github gcd"))
 	if err != nil {
 		log.Println("timed out waiting for title to change to github gcd")
