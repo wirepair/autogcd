@@ -102,7 +102,7 @@ type NetworkRequestHandlerFunc func(tab *Tab, request *NetworkRequest)
 type NetworkResponseHandlerFunc func(tab *Tab, response *NetworkResponse)
 
 // A function for handling network finished, meaning it's safe to call Network.GetResponseBody
-type NetworkFinishedHandlerFunc func(tab *Tab, requestId string)
+type NetworkFinishedHandlerFunc func(tab *Tab, requestId string, dataLength, timeStamp float64)
 
 // A function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
 type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
@@ -264,11 +264,13 @@ func (t *Tab) Navigate(url string) (string, error) {
 		return "", err
 	}
 	t.lastNodeChangeTimeVal.Store(time.Now())
-	err = t.navigationWait(url)
+	// create timeoutTimer for both navigation & document wait
+	timeoutTimer := time.NewTimer(t.navigationTimeout)
+	err = t.navigationWait(timeoutTimer, url)
 	if err != nil {
 		return frameId, err
 	}
-	err = t.documentWait(url)
+	err = t.documentWait(timeoutTimer, url)
 	t.debugf("navigation complete")
 	return frameId, err
 }
@@ -288,9 +290,7 @@ func (t *Tab) DidNavigationFail() (bool, string) {
 }
 
 // Wait for Page.loadEventFired or timeout.
-func (t *Tab) navigationWait(url string) error {
-	timeoutTimer := time.NewTimer(t.navigationTimeout)
-
+func (t *Tab) navigationWait(timeoutTimer *time.Timer, url string) error {
 	select {
 	case <-t.navigationCh:
 		timeoutTimer.Stop()
@@ -303,8 +303,8 @@ func (t *Tab) navigationWait(url string) error {
 // Wait for document updated event from Tab.documentUpdated event processing to finish
 // so we have a valid set of elements. Timeout after two seconds if we never get a
 // document update event.
-func (t *Tab) documentWait(url string) error {
-	timeoutTimer := time.NewTimer(2 * time.Second)
+func (t *Tab) documentWait(timeoutTimer *time.Timer, url string) error {
+
 	select {
 	case <-t.docUpdateCh:
 		timeoutTimer.Stop()
@@ -872,7 +872,7 @@ func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, resp
 			message := &gcdapi.NetworkLoadingFinishedEvent{}
 			if err := json.Unmarshal(payload, message); err == nil {
 				p := message.Params
-				finishedHandlerFn(t, p.RequestId)
+				finishedHandlerFn(t, p.RequestId, p.EncodedDataLength, p.Timestamp)
 			}
 		})
 	}
@@ -1013,7 +1013,7 @@ func (t *Tab) listenDebuggerEvents() {
 		select {
 		case nodeChangeEvent := <-t.nodeChange:
 			t.debugf("%s\n", nodeChangeEvent.EventType)
-			go t.handleNodeChange(nodeChangeEvent)
+			t.handleNodeChange(nodeChangeEvent)
 			// if the caller registered a dom change listener, call it
 			if t.domChangeHandler != nil {
 				t.domChangeHandler(t, nodeChangeEvent)

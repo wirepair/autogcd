@@ -130,14 +130,13 @@ func (e *Element) populateElement(node *gcdapi.DOMNode) {
 		e.updateAttribute(node.Attributes[i], node.Attributes[i+1])
 	}
 
-	e.lock.Lock()
-	defer e.lock.Unlock()
 	// close it
 	if !e.ready {
 		close(e.readyGate)
 	}
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	e.ready = true
-
 }
 
 // Has the Chrome Debugger notified us of this Elements data yet?
@@ -162,16 +161,17 @@ func (e *Element) setInvalidated(invalid bool) {
 }
 
 // If we are ready, just return, if we are not, wait for the readyGate
-// to be closed or for the timeout timer to fird.
+// to be closed or for the timeout timer to fired.
 func (e *Element) WaitForReady() error {
 	e.lock.RLock()
-	if e.ready {
-		e.lock.RUnlock()
-		return nil
-	}
+	ready := e.ready
 	e.lock.RUnlock()
 
-	timeout := time.NewTimer(e.tab.elementTimeout * time.Second)
+	if ready {
+		return nil
+	}
+
+	timeout := time.NewTimer(e.tab.elementTimeout)
 	select {
 	case <-e.readyGate:
 		return nil
@@ -326,7 +326,6 @@ func (e *Element) addChildren(childNodes []*gcdapi.DOMNode) {
 func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
 	var idx int
 	var child *gcdapi.DOMNode
-	childIdx := -1
 
 	e.lock.Lock()
 	defer e.lock.Unlock()
@@ -337,17 +336,11 @@ func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
 
 	for idx, child = range e.node.Children {
 		if child.NodeId == removedNode.NodeId {
-			childIdx = idx
+			e.node.Children = append(e.node.Children[:idx], e.node.Children[idx+1:]...)
+			e.node.ChildNodeCount = e.node.ChildNodeCount - 1
 			break
 		}
 	}
-	// remove the child via idx from our slice
-	if childIdx == -1 {
-		return
-	}
-
-	e.node.Children = append(e.node.Children[:childIdx], e.node.Children[:childIdx+1]...)
-	e.node.ChildNodeCount = e.node.ChildNodeCount - 1
 }
 
 // Get child node ids, returns nil if node is not ready
