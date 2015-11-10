@@ -79,6 +79,9 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 		auto.debugger.SetTimeout(settings.timeout)
 	}
 
+	if len(settings.env) > 0 {
+		auto.debugger.AddEnvironmentVars(settings.env)
+	}
 	return auto
 }
 

@@ -318,12 +318,14 @@ func (e *Element) addChild(child *gcdapi.DOMNode) {
 // adds the children to our DOMNode
 func (e *Element) addChildren(childNodes []*gcdapi.DOMNode) {
 	for _, child := range childNodes {
-		e.addChild(child)
+		if child != nil {
+			e.addChild(child)
+		}
 	}
 }
 
 // removes the child from our DOMNode
-func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
+func (e *Element) removeChild(removedNodeId int) {
 	var idx int
 	var child *gcdapi.DOMNode
 
@@ -335,7 +337,7 @@ func (e *Element) removeChild(removedNode *gcdapi.DOMNode) {
 	}
 
 	for idx, child = range e.node.Children {
-		if child.NodeId == removedNode.NodeId {
+		if child != nil && child.NodeId == removedNodeId {
 			e.node.Children = append(e.node.Children[:idx], e.node.Children[idx+1:]...)
 			e.node.ChildNodeCount = e.node.ChildNodeCount - 1
 			break

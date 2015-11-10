@@ -1134,10 +1134,14 @@ func (t *Tab) handleChildNodeRemoved(parentNodeId, nodeId int) {
 
 	if ok {
 		if err := parent.WaitForReady(); err == nil {
-			parent.removeChild(ele.node)
+			parent.removeChild(ele.NodeId())
 		}
 	}
-	t.invalidateChildren(ele.node)
+
+	// if nots not ready, node will be nil
+	if ele.IsReady() {
+		t.invalidateChildren(ele.node)
+	}
 
 	t.eleMutex.Lock()
 	delete(t.elements, nodeId)

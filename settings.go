@@ -38,6 +38,7 @@ type Settings struct {
 	removeUserDir bool          // should we delete the user directory on shutdown?
 	extensions    []string      // custom extensions to load
 	flags         []string      // custom os.Environ flags to use to start the chrome process
+	env           []string      // custom env vars for launching the process
 }
 
 // Creates a new settings object to start Chrome and enable remote debugging
@@ -49,12 +50,17 @@ func NewSettings(chromePath, userDir string) *Settings {
 	s.removeUserDir = false
 	s.extensions = make([]string, 0)
 	s.flags = make([]string, 0)
+	s.env = make([]string, 0)
 	return s
 }
 
 // Can really only be localhost, but this may change in the future so support it anyways.
 func (s *Settings) SetChromeHost(host string) {
 	s.chromeHost = host
+}
+
+func (s *Settings) AddEnvironmentVars(env []string) {
+	s.env = append(s.env, env...)
 }
 
 // Sets the chrome debugger port.
