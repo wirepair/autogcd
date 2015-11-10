@@ -264,13 +264,11 @@ func (t *Tab) Navigate(url string) (string, error) {
 		return "", err
 	}
 	t.lastNodeChangeTimeVal.Store(time.Now())
-	// create timeoutTimer for both navigation & document wait
-	timeoutTimer := time.NewTimer(t.navigationTimeout)
-	err = t.navigationWait(timeoutTimer, url)
+
+	err = t.readyWait(url)
 	if err != nil {
 		return frameId, err
 	}
-	err = t.documentWait(timeoutTimer, url)
 	t.debugf("navigation complete")
 	return frameId, err
 }
@@ -289,29 +287,28 @@ func (t *Tab) DidNavigationFail() (bool, string) {
 	return false, ""
 }
 
-// Wait for Page.loadEventFired or timeout.
-func (t *Tab) navigationWait(timeoutTimer *time.Timer, url string) error {
-	select {
-	case <-t.navigationCh:
-		timeoutTimer.Stop()
-	case <-timeoutTimer.C:
-		return &TimeoutErr{Message: "navigating to: " + url}
-	}
-	return nil
-}
+// Set a single timer for both navigation and document updates.
+// navigationCh waits for a Page.loadEventFired or timeout.
+// docUpdateCh waits for document updated event from Tab.documentUpdated
+// event processing to finish so we have a valid set of elements.
+func (t *Tab) readyWait(url string) error {
+	var navigated bool
+	timeoutTimer := time.NewTimer(t.navigationTimeout)
 
-// Wait for document updated event from Tab.documentUpdated event processing to finish
-// so we have a valid set of elements. Timeout after two seconds if we never get a
-// document update event.
-func (t *Tab) documentWait(timeoutTimer *time.Timer, url string) error {
-
-	select {
-	case <-t.docUpdateCh:
-		timeoutTimer.Stop()
-	case <-timeoutTimer.C:
-		return &TimeoutErr{Message: "waiting for document updated failed for: " + url}
+	for {
+		select {
+		case <-t.navigationCh:
+			navigated = true
+		case <-t.docUpdateCh:
+			return nil
+		case <-timeoutTimer.C:
+			msg := "navigating to: "
+			if navigated == true {
+				msg = "waiting for document updated failed for: "
+			}
+			return &TimeoutErr{Message: msg + url}
+		}
 	}
-	return nil
 }
 
 // Returns the current navigation index, history entries or error
