@@ -419,7 +419,8 @@ func (t *Tab) WaitStable() error {
 				}
 			} else {
 				// this should really, really never happen.
-				panic("autogcd WaitStable lastNodeChangeTime was not a time.Time")
+				log.Printf("%#v\n", changeTime)
+				panic("autogcd WaitStable lastNodeChangeTime was not a time.Time ")
 			}
 
 		}
