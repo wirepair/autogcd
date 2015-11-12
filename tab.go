@@ -428,16 +428,13 @@ func (t *Tab) WaitStable() error {
 			if changeTime, ok := t.lastNodeChangeTimeVal.Load().(time.Time); ok {
 				if time.Now().Sub(changeTime) >= t.stableAfter {
 					// times up!
-					log.Printf("times up!")
 					return nil
 				}
 			} else {
 				// this happens if you don't check that navigation was an error before calling WaitStable
 				return &InvalidNavigationErr{Message: "WaitStable called when there was no last node change time"}
 			}
-			log.Printf("still doing stable check!")
 		}
-		log.Printf("STILL LOOPING")
 	}
 	return nil
 }
