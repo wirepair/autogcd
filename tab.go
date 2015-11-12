@@ -418,9 +418,8 @@ func (t *Tab) WaitStable() error {
 					return nil
 				}
 			} else {
-				// this should really, really never happen.
-				log.Printf("%#v\n", changeTime)
-				panic("autogcd WaitStable lastNodeChangeTime was not a time.Time ")
+				// this happens if you don't check that navigation was an error before calling WaitStable
+				return &InvalidNavigationErr{Message: "WaitStable called when there was no last node change time"}
 			}
 
 		}
