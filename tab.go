@@ -294,6 +294,7 @@ func (t *Tab) DidNavigationFail() (bool, string) {
 func (t *Tab) readyWait(url string) error {
 	var navigated bool
 	timeoutTimer := time.NewTimer(t.navigationTimeout)
+	defer timeoutTimer.Stop()
 
 	for {
 		select {
@@ -377,6 +378,12 @@ func (t *Tab) BackEntry() (*gcdapi.PageNavigationEntry, error) {
 func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) error {
 	rateTicker := time.NewTicker(rate)
 	timeoutTimer := time.NewTimer(timeout)
+
+	defer func() {
+		timeoutTimer.Stop()
+		rateTicker.Stop()
+	}()
+
 	for {
 		select {
 		case <-timeoutTimer.C:
@@ -384,7 +391,6 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 		case <-rateTicker.C:
 			ret := conditionFn(t)
 			if ret == true {
-				timeoutTimer.Stop()
 				return nil
 			}
 		}
@@ -402,11 +408,18 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 func (t *Tab) WaitStable() error {
 	checkRate := 20 * time.Millisecond
 	timeoutTimer := time.NewTimer(t.stabilityTimeout)
+
 	if t.stableAfter < checkRate {
 		checkRate = t.stableAfter / 2 // halve the checkRate of the user supplied stabilityTime
-
 	}
 	stableCheck := time.NewTicker(checkRate) // check last node change every 20 seconds
+
+	// close timers
+	defer func() {
+		timeoutTimer.Stop()
+		stableCheck.Stop()
+	}()
+
 	for {
 		select {
 		case <-timeoutTimer.C:
@@ -415,14 +428,16 @@ func (t *Tab) WaitStable() error {
 			if changeTime, ok := t.lastNodeChangeTimeVal.Load().(time.Time); ok {
 				if time.Now().Sub(changeTime) >= t.stableAfter {
 					// times up!
+					log.Printf("times up!")
 					return nil
 				}
 			} else {
 				// this happens if you don't check that navigation was an error before calling WaitStable
 				return &InvalidNavigationErr{Message: "WaitStable called when there was no last node change time"}
 			}
-
+			log.Printf("still doing stable check!")
 		}
+		log.Printf("STILL LOOPING")
 	}
 	return nil
 }
