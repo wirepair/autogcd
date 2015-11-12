@@ -406,7 +406,7 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 // would be submitting an XHR based form that does a history.pushState and does *not* actually load a new
 // page but simply inserts and removes elements dynamically. Returns error only if we timed out.
 func (t *Tab) WaitStable() error {
-	checkRate := 20 * time.Millisecond
+	checkRate := 100 * time.Millisecond
 	timeoutTimer := time.NewTimer(t.stabilityTimeout)
 
 	if t.stableAfter < checkRate {
