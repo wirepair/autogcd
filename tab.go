@@ -406,7 +406,7 @@ func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) 
 // would be submitting an XHR based form that does a history.pushState and does *not* actually load a new
 // page but simply inserts and removes elements dynamically. Returns error only if we timed out.
 func (t *Tab) WaitStable() error {
-	checkRate := 100 * time.Millisecond
+	checkRate := 150 * time.Millisecond
 	timeoutTimer := time.NewTimer(t.stabilityTimeout)
 
 	if t.stableAfter < checkRate {
@@ -1045,20 +1045,27 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 		t.handleSetChildNodes(change.ParentNodeId, change.Nodes)
 	case AttributeModifiedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.updateAttribute(change.Name, change.Value)
+			if err := ele.WaitForReady(); err == nil {
+				ele.updateAttribute(change.Name, change.Value)
+			}
 		}
 	case AttributeRemovedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.removeAttribute(change.Name)
+			if err := ele.WaitForReady(); err == nil {
+				ele.removeAttribute(change.Name)
+			}
 		}
 	case CharacterDataModifiedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.updateCharacterData(change.CharacterData)
+			if err := ele.WaitForReady(); err == nil {
+				ele.updateCharacterData(change.CharacterData)
+			}
 		}
 	case ChildNodeCountUpdatedEvent:
 		if ele, ok := t.getElement(change.NodeId); ok {
-			ele.WaitForReady()
-			ele.updateChildNodeCount(change.ChildNodeCount)
+			if err := ele.WaitForReady(); err == nil {
+				ele.updateChildNodeCount(change.ChildNodeCount)
+			}
 			// request the child nodes
 			t.requestChildNodes(change.NodeId, -1)
 		}

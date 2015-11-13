@@ -83,17 +83,18 @@ func (e *InvalidDimensionsErr) Error() string {
 // Certain actions require that the Element be populated (getting nodename/type)
 // If you need this information, wait for IsReady() to return true
 type Element struct {
-	lock          *sync.RWMutex     // for protecting read/write access to this Element
-	attributes    map[string]string // dom attributes
-	nodeName      string            // the DOM tag name
-	characterData string            // the character data (if any, #text only)
-	nodeType      int               // the DOM nodeType
-	tab           *Tab              // reference to the containing tab
-	node          *gcdapi.DOMNode   // the dom node, taken from the document
-	readyGate     chan struct{}     // gate to close upon recieving all information from the debugger service
-	id            int               // nodeId in chrome
-	ready         bool              // has this elements data been populated by setChildNodes or GetDocument?
-	invalidated   bool              // has this node been invalidated (removed?)
+	lock           *sync.RWMutex     // for protecting read/write access to this Element
+	attributes     map[string]string // dom attributes
+	nodeName       string            // the DOM tag name
+	characterData  string            // the character data (if any, #text only)
+	childNodeCount int               // the number of children this element has
+	nodeType       int               // the DOM nodeType
+	tab            *Tab              // reference to the containing tab
+	node           *gcdapi.DOMNode   // the dom node, taken from the document
+	readyGate      chan struct{}     // gate to close upon recieving all information from the debugger service
+	id             int               // nodeId in chrome
+	ready          bool              // has this elements data been populated by setChildNodes or GetDocument?
+	invalidated    bool              // has this node been invalidated (removed?)
 }
 
 func newElement(tab *Tab, nodeId int) *Element {
@@ -112,7 +113,6 @@ func newReadyElement(tab *Tab, node *gcdapi.DOMNode) *Element {
 	e.attributes = make(map[string]string)
 	e.readyGate = make(chan struct{})
 	e.nodeName = strings.ToLower(node.NodeName)
-	e.id = node.NodeId
 	e.lock = &sync.RWMutex{}
 	e.populateElement(node)
 	return e
@@ -122,8 +122,10 @@ func newReadyElement(tab *Tab, node *gcdapi.DOMNode) *Element {
 func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.lock.Lock()
 	e.node = node
+	e.id = node.NodeId
 	e.nodeType = node.NodeType
 	e.nodeName = strings.ToLower(node.NodeName)
+	e.childNodeCount = node.ChildNodeCount
 	e.lock.Unlock()
 
 	for i := 0; i < len(node.Attributes); i += 2 {
@@ -172,6 +174,8 @@ func (e *Element) WaitForReady() error {
 	}
 
 	timeout := time.NewTimer(e.tab.elementTimeout)
+	defer timeout.Stop()
+
 	select {
 	case <-e.readyGate:
 		return nil
@@ -205,6 +209,10 @@ func (e *Element) IsDocument() (bool, error) {
 
 // If this is a #document, returns the underlying chrome frameId.
 func (e *Element) FrameId() (string, error) {
+	if !e.IsReady() {
+		return "", &ElementNotReadyErr{}
+	}
+
 	isDoc, err := e.IsDocument()
 	if err != nil {
 		return "", err
@@ -220,13 +228,13 @@ func (e *Element) FrameId() (string, error) {
 
 // If this element is a frame or iframe, return the ContentDocument node id
 func (e *Element) GetFrameDocumentNodeId() (int, error) {
+	if !e.IsReady() {
+		return -1, &ElementNotReadyErr{}
+	}
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 
-	if !e.ready {
-		return -1, &ElementNotReadyErr{}
-	}
-	if e.node.ContentDocument != nil {
+	if e.node != nil && e.node.ContentDocument != nil {
 		return e.node.ContentDocument.NodeId, nil
 	}
 	return -1, &IncorrectElementTypeErr{ExpectedName: "(i)frame", NodeName: e.nodeName}
@@ -260,12 +268,12 @@ func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error
 // Returns the underlying DOMNode for this element. Note this is potentially
 // unsafe to access as we give up the ability to lock.
 func (e *Element) GetDebuggerDOMNode() (*gcdapi.DOMNode, error) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
-
-	if !e.ready {
+	if !e.IsReady() {
 		return nil, &ElementNotReadyErr{}
 	}
+
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	if e.invalidated {
 		return nil, &InvalidElementErr{}
 	}
@@ -301,18 +309,23 @@ func (e *Element) updateChildNodeCount(newValue int) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	e.node.ChildNodeCount = newValue
+	e.childNodeCount = newValue
 }
 
 // adds the child to our DOMNode.
 func (e *Element) addChild(child *gcdapi.DOMNode) {
 	e.lock.Lock()
+	defer e.lock.Unlock()
+
+	if e.node == nil {
+		return
+	}
+
 	if e.node.Children == nil {
 		e.node.Children = make([]*gcdapi.DOMNode, 0)
 	}
 	e.node.Children = append(e.node.Children, child)
-	e.node.ChildNodeCount++
-	e.lock.Unlock()
+	e.childNodeCount++
 }
 
 // adds the children to our DOMNode
@@ -339,7 +352,7 @@ func (e *Element) removeChild(removedNodeId int) {
 	for idx, child = range e.node.Children {
 		if child != nil && child.NodeId == removedNodeId {
 			e.node.Children = append(e.node.Children[:idx], e.node.Children[idx+1:]...)
-			e.node.ChildNodeCount = e.node.ChildNodeCount - 1
+			e.childNodeCount = e.childNodeCount - 1
 			break
 		}
 	}
@@ -353,6 +366,7 @@ func (e *Element) GetChildNodeIds() ([]int, error) {
 	if !e.ready {
 		return nil, &ElementNotReadyErr{}
 	}
+
 	if e.node == nil || e.node.Children == nil {
 		return nil, &ElementHasNoChildrenErr{}
 	}
@@ -605,7 +619,7 @@ func (e *Element) String() string {
 	for key, value := range e.attributes {
 		attrs = attrs + "\t" + key + "=" + value + "\n"
 	}
-	output = fmt.Sprintf("%s NodeType: %d TagName: %s characterData: %s childNodeCount: %d attributes (%d): \n%s", output, e.nodeType, e.nodeName, e.characterData, e.node.ChildNodeCount, len(e.attributes), attrs)
+	output = fmt.Sprintf("%s NodeType: %d TagName: %s characterData: %s childNodeCount: %d attributes (%d): \n%s", output, e.nodeType, e.nodeName, e.characterData, e.childNodeCount, len(e.attributes), attrs)
 	if e.nodeType == int(DOCUMENT_NODE) {
 		output = fmt.Sprintf("%s FrameId: %s documentURL: %s\n", output, e.node.FrameId, e.node.DocumentURL)
 	}
