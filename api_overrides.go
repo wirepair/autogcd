@@ -59,8 +59,10 @@ func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objec
 	}
 	paramRequest["returnByValue"] = returnByValue
 	paramRequest["generatePreview"] = generatePreview
-	recvCh, _ := gcdmessage.SendCustomReturn(target.GetSendCh(), &gcdmessage.ParamRequest{Id: target.GetId(), Method: "Runtime.evaluate", Params: paramRequest})
-	resp := <-recvCh
+	resp, err := gcdmessage.SendCustomReturn(target, target.GetSendCh(), &gcdmessage.ParamRequest{Id: target.GetId(), Method: "Runtime.evaluate", Params: paramRequest})
+	if err != nil {
+		return nil, false, nil, err
+	}
 
 	var chromeData struct {
 		Result struct {
@@ -76,8 +78,7 @@ func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objec
 		return nil, false, nil, &gcdmessage.ChromeRequestErr{Resp: cerr}
 	}
 
-	err := json.Unmarshal(resp.Data, &chromeData)
-	if err != nil {
+	if err := json.Unmarshal(resp.Data, &chromeData); err != nil {
 		return nil, false, nil, err
 	}
 
