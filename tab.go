@@ -1154,8 +1154,8 @@ func (t *Tab) handleChildNodeRemoved(parentNodeId, nodeId int) {
 		}
 	}
 
-	// if nots not ready, node will be nil
-	if ele.IsReady() {
+	// if not ready, node will be nil
+	if ele.IsReadyInvalid() {
 		t.invalidateChildren(ele.node)
 	}
 

@@ -148,6 +148,13 @@ func (e *Element) IsReady() bool {
 	return (e.ready && !e.invalidated)
 }
 
+// Has Chrome notified us, but the element is invalid?
+func (e *Element) IsReadyInvalid() bool {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	return (e.ready && e.invalidated)
+}
+
 // Has the debugger invalidated (removed) the element from the DOM?
 func (e *Element) IsInvalid() bool {
 	e.lock.RLock()

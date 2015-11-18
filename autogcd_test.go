@@ -162,7 +162,7 @@ func testServer() {
 	testListener, _ = net.Listen("tcp", ":0")
 	_, testServerPort, _ := net.SplitHostPort(testListener.Addr().String())
 	testServerAddr = fmt.Sprintf("http://localhost:%s/", testServerPort)
-	go http.Serve(testListener, http.FileServer(http.Dir("testdata/")))
+	go http.Serve(testListener, http.FileServer(http.Dir("testdata")))
 }
 
 func testRandomPort(t *testing.T) string {

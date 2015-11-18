@@ -9,19 +9,20 @@ import (
 
 var (
 	testWaitRate    = 20 * time.Millisecond
-	testWaitTimeout = 4 * time.Second
+	testWaitTimeout = 15 * time.Second
 )
 
 func TestElementDimensions(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	//tab.Debug(true)
-
+	tab.Debug(true)
+	tab.ChromeTarget.Debug(true)
+	t.Logf("serv: %s\n", testServerAddr)
 	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
@@ -58,7 +59,7 @@ func TestElementClick(t *testing.T) {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -110,7 +111,7 @@ func TestElementMouseOver(t *testing.T) {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -161,7 +162,7 @@ func TestElementDoubleClick(t *testing.T) {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -212,7 +213,7 @@ func TestElementGetSource(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -250,7 +251,7 @@ func TestElementGetAttributes(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -308,7 +309,7 @@ func TestElementSendKeys(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -352,7 +353,7 @@ func TestElementGetTag(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -389,7 +390,7 @@ func TestElementGetEventListeners(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -429,7 +430,7 @@ func TestElementFrameGetTag(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -476,7 +477,7 @@ func TestElementInvalidated(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}

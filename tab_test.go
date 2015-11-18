@@ -12,7 +12,7 @@ func TestTabNavigate(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -26,7 +26,7 @@ func TestTabGetCurrentUrl(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -47,7 +47,7 @@ func TestTabGetTitle(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -70,7 +70,7 @@ func TestTabGetConsoleMessage(t *testing.T) {
 
 	timeout := time.NewTimer(5 * time.Second)
 	done := make(chan struct{})
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -100,7 +100,7 @@ func TestTabGetPageSource(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -125,11 +125,11 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	//tab.Debug(true)
+	tab.Debug(true)
 	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
@@ -142,6 +142,11 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting inner frame element")
 	}
+
+	if err := ele.WaitForReady(); err != nil {
+		t.Fatalf("error waiting for innerfr to be ready: %s\n", err)
+	}
+
 	id, err := ele.GetFrameDocumentNodeId()
 	if err != nil {
 		t.Fatalf("error getting iframe document node id: %s\n", err)
@@ -164,7 +169,7 @@ func TestTabGetFrameResources(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -195,7 +200,7 @@ func TestTabPromptHandler(t *testing.T) {
 	timeout := time.NewTimer(5 * time.Second)
 	done := make(chan struct{})
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -230,7 +235,7 @@ func TestTabNavigationTimeout(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -245,7 +250,7 @@ func TestTabInjectScript(t *testing.T) {
 	defer testAuto.Shutdown()
 	wg := &sync.WaitGroup{}
 	wg.Add(4) // should be called 2x, one for main page, one for script_inner.html
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -271,7 +276,7 @@ func TestTabEvaluateScript(t *testing.T) {
 	defer testAuto.Shutdown()
 	wg := &sync.WaitGroup{}
 	wg.Add(1) // should be called 2x, one for main page, one for script_inner.html
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -303,7 +308,7 @@ func TestTabEvaluateScript(t *testing.T) {
 func TestTabTwoTabCookies(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab1, err := testAuto.GetTab()
+	tab1, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -373,7 +378,7 @@ func TestTabNetworkTraffic(t *testing.T) {
 func TestTabWindows(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -403,7 +408,7 @@ func TestTabWindows(t *testing.T) {
 func TestTabAfterRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	//tab.Debug(true)
 	if err != nil {
 		t.Fatalf("error getting tab")
@@ -476,10 +481,14 @@ func TestTabAfterRedirect(t *testing.T) {
 func TestTabFrameRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+
+	tab.Debug(true)
+
 	if _, err := tab.Navigate(testServerAddr + "frame_top.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
@@ -511,6 +520,10 @@ func TestTabFrameRedirect(t *testing.T) {
 	}
 
 	if !ifrDoc.IsInvalid() {
+		t.Log("frameredirect:")
+		t.Log(ifr.String())
+		t.Log("frameredirect doc:")
+		t.Log(ifrDoc.String())
 		t.Fatalf("error the iframe elements document was not invalidated after redirect")
 	}
 }
@@ -538,7 +551,7 @@ func TestTabMultiTab(t *testing.T) {
 func TestTabNavigationError(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -582,7 +595,7 @@ func TestTabNavigationError(t *testing.T) {
 func TestTabSslError(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -615,7 +628,7 @@ func TestTabSslError(t *testing.T) {
 func TestTabChromeTabCrash(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
@@ -640,7 +653,7 @@ func TestTabChromeTabCrash(t *testing.T) {
 func TestTabChromeUnhandledCrash(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
-	tab, err := testAuto.GetTab()
+	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
