@@ -64,6 +64,10 @@ func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objec
 		return nil, false, nil, err
 	}
 
+	if resp == nil {
+		return nil, false, nil, &gcdmessage.ChromeEmptyResponseErr{}
+	}
+
 	var chromeData struct {
 		Result struct {
 			Result           *gcdapi.RuntimeRemoteObject
