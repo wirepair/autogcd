@@ -47,6 +47,7 @@ or rewriting links etc.
 package autogcd
 
 import (
+	"errors"
 	"fmt"
 	"github.com/wirepair/gcd"
 	"os"
@@ -58,6 +59,7 @@ type AutoGcd struct {
 	settings *Settings
 	tabLock  *sync.RWMutex
 	tabs     map[string]*Tab
+	shutdown bool
 }
 
 // Creates a new AutoGcd based off the provided settings.
@@ -112,15 +114,23 @@ func (auto *AutoGcd) Start() error {
 
 // Closes all tabs and shuts down the browser.
 func (auto *AutoGcd) Shutdown() error {
+	if auto.shutdown {
+		return errors.New("AutoGcd already shut down.")
+	}
+
 	auto.tabLock.Lock()
 	for _, tab := range auto.tabs {
+		tab.close() // exit go routines
 		auto.debugger.CloseTab(tab.ChromeTarget)
+
 	}
 	auto.tabLock.Unlock()
 	auto.debugger.ExitProcess()
 	if auto.settings.removeUserDir == true {
 		return os.RemoveAll(auto.settings.userDir)
 	}
+
+	auto.shutdown = true
 	return nil
 }
 
@@ -198,9 +208,12 @@ func (auto *AutoGcd) NewTab() (*Tab, error) {
 
 // Closes the provided tab.
 func (auto *AutoGcd) CloseTab(tab *Tab) error {
+	tab.close() // kill listening go routines
+
 	if err := auto.debugger.CloseTab(tab.ChromeTarget); err != nil {
 		return err
 	}
+
 	auto.tabLock.Lock()
 	defer auto.tabLock.Unlock()
 

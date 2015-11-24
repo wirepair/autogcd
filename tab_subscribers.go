@@ -52,13 +52,18 @@ func (t *Tab) subscribeTargetDetached() {
 func (t *Tab) subscribeLoadEvent() {
 	t.Subscribe("Page.loadEventFired", func(target *gcd.ChromeTarget, payload []byte) {
 		if t.IsNavigating() {
-			t.navigationCh <- 0
+			select {
+			case t.navigationCh <- 0:
+			case <-t.exitCh:
+			}
+
 		}
 	})
 }
 
 func (t *Tab) subscribeFrameLoadingEvent() {
 	t.Subscribe("Page.frameStartedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		t.debugf("frameStartedLoading: %s\n", string(payload))
 		if t.IsNavigating() {
 			return
 		}
@@ -73,6 +78,7 @@ func (t *Tab) subscribeFrameLoadingEvent() {
 
 func (t *Tab) subscribeFrameFinishedEvent() {
 	t.Subscribe("Page.frameStoppedLoading", func(target *gcd.ChromeTarget, payload []byte) {
+		t.debugf("frameStoppedLoading: %s\n", string(payload))
 		if t.IsNavigating() {
 			return
 		}
@@ -92,7 +98,8 @@ func (t *Tab) subscribeSetChildNodes() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: SetChildNodesEvent, Nodes: event.Nodes, ParentNodeId: event.ParentId}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: SetChildNodesEvent, Nodes: event.Nodes, ParentNodeId: event.ParentId})
+
 		}
 	})
 }
@@ -103,7 +110,7 @@ func (t *Tab) subscribeAttributeModified() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: AttributeModifiedEvent, Name: event.Name, Value: event.Value, NodeId: event.NodeId}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: AttributeModifiedEvent, Name: event.Name, Value: event.Value, NodeId: event.NodeId})
 		}
 	})
 }
@@ -114,7 +121,7 @@ func (t *Tab) subscribeAttributeRemoved() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: AttributeRemovedEvent, NodeId: event.NodeId, Name: event.Name}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: AttributeRemovedEvent, NodeId: event.NodeId, Name: event.Name})
 		}
 	})
 }
@@ -124,7 +131,7 @@ func (t *Tab) subscribeCharacterDataModified() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: CharacterDataModifiedEvent, NodeId: event.NodeId, CharacterData: event.CharacterData}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: CharacterDataModifiedEvent, NodeId: event.NodeId, CharacterData: event.CharacterData})
 		}
 	})
 }
@@ -134,7 +141,7 @@ func (t *Tab) subscribeChildNodeCountUpdated() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: ChildNodeCountUpdatedEvent, NodeId: event.NodeId, ChildNodeCount: event.ChildNodeCount}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: ChildNodeCountUpdatedEvent, NodeId: event.NodeId, ChildNodeCount: event.ChildNodeCount})
 		}
 	})
 }
@@ -145,7 +152,7 @@ func (t *Tab) subscribeChildNodeInserted() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: ChildNodeInsertedEvent, Node: event.Node, ParentNodeId: event.ParentNodeId, PreviousNodeId: event.PreviousNodeId}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: ChildNodeInsertedEvent, Node: event.Node, ParentNodeId: event.ParentNodeId, PreviousNodeId: event.PreviousNodeId})
 		}
 	})
 }
@@ -155,9 +162,17 @@ func (t *Tab) subscribeChildNodeRemoved() {
 		err := json.Unmarshal(payload, header)
 		if err == nil {
 			event := header.Params
-			t.nodeChange <- &NodeChangeEvent{EventType: ChildNodeRemovedEvent, ParentNodeId: event.ParentNodeId, NodeId: event.NodeId}
+			t.dispatchNodeChange(&NodeChangeEvent{EventType: ChildNodeRemovedEvent, ParentNodeId: event.ParentNodeId, NodeId: event.NodeId})
 		}
 	})
+}
+
+func (t *Tab) dispatchNodeChange(evt *NodeChangeEvent) {
+	select {
+	case t.nodeChange <- evt:
+	case <-t.exitCh:
+		return
+	}
 }
 
 /*
@@ -175,6 +190,9 @@ func (t *Tab) subscribeInlineStyleInvalidated() {
 func (t *Tab) subscribeDocumentUpdated() {
 	// node ids are no longer valid
 	t.Subscribe("DOM.documentUpdated", func(target *gcd.ChromeTarget, payload []byte) {
-		t.nodeChange <- &NodeChangeEvent{EventType: DocumentUpdatedEvent}
+		select {
+		case t.nodeChange <- &NodeChangeEvent{EventType: DocumentUpdatedEvent}:
+		case <-t.exitCh:
+		}
 	})
 }

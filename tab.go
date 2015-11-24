@@ -127,6 +127,8 @@ type Tab struct {
 	navigationCh          chan int               // for receiving navigation complete messages while isNavigating is true
 	docUpdateCh           chan struct{}          // for receiving document update completion while isNavigating is true
 	crashedCh             chan string            // the chrome tab crashed with a reason
+	exitCh                chan struct{}          // for when we close the tab, kill go routines
+	shutdown              bool                   // have we already shut down
 	disconnectedHandler   TabDisconnectedHandler // called with reason the chrome tab was disconnected from the debugger service
 	navigationTimeout     time.Duration          // amount of time to wait before failing navigation
 	elementTimeout        time.Duration          // amount of time to wait for element readiness
@@ -142,9 +144,10 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.eleMutex = &sync.RWMutex{}
 	t.elements = make(map[int]*Element)
 	t.nodeChange = make(chan *NodeChangeEvent)
-	t.navigationCh = make(chan int, 1)     // for signaling navigation complete
-	t.docUpdateCh = make(chan struct{})    // wait for documentUpdate to be called during navigation
-	t.crashedCh = make(chan string)        // reason the tab crashed/was disconnected.
+	t.navigationCh = make(chan int, 1)  // for signaling navigation complete
+	t.docUpdateCh = make(chan struct{}) // wait for documentUpdate to be called during navigation
+	t.crashedCh = make(chan string)     // reason the tab crashed/was disconnected.
+	t.exitCh = make(chan struct{})
 	t.navigationTimeout = 30 * time.Second // default 30 seconds for timeout
 	t.elementTimeout = 5 * time.Second     // default 5 seconds for waiting for element.
 	t.stabilityTimeout = 2 * time.Second   // default 2 seconds before we give up waiting for stability
@@ -158,6 +161,13 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.subscribeEvents()
 	go t.listenDebuggerEvents()
 	return t
+}
+
+func (t *Tab) close() {
+	if !t.shutdown {
+		close(t.exitCh)
+	}
+	t.shutdown = true
 }
 
 // Enable or disable internal debug printing
@@ -889,7 +899,7 @@ func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, resp
 }
 
 // Unsubscribes from network request/response events and disables the Network debugger.
-// Pass shouldDisable as true if you wish to disable the network service. (NOT RECOMMENDED)
+// Pass shouldDisable as true if you wish to disable the network service.
 func (t *Tab) StopNetworkTraffic(shouldDisable bool) error {
 	var err error
 	t.Unsubscribe("Network.requestWillBeSent")
@@ -1032,6 +1042,9 @@ func (t *Tab) listenDebuggerEvents() {
 			if t.disconnectedHandler != nil {
 				go t.disconnectedHandler(t, reason)
 			}
+		case <-t.exitCh:
+			t.debugf("exiting...")
+			return
 		}
 	}
 }

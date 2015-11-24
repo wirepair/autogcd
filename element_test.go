@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	testWaitRate    = 20 * time.Millisecond
-	testWaitTimeout = 15 * time.Second
+	testWaitRate    = 50 * time.Millisecond
+	testWaitTimeout = 5 * time.Second
 )
 
 func TestElementDimensions(t *testing.T) {
@@ -20,9 +20,7 @@ func TestElementDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
-	tab.ChromeTarget.Debug(true)
-	t.Logf("serv: %s\n", testServerAddr)
+
 	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
