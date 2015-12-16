@@ -128,7 +128,7 @@ type Tab struct {
 	docUpdateCh           chan struct{}          // for receiving document update completion while isNavigating is true
 	crashedCh             chan string            // the chrome tab crashed with a reason
 	exitCh                chan struct{}          // for when we close the tab, kill go routines
-	shutdown              bool                   // have we already shut down
+	shutdown              atomic.Value           // have we already shut down
 	disconnectedHandler   TabDisconnectedHandler // called with reason the chrome tab was disconnected from the debugger service
 	navigationTimeout     time.Duration          // amount of time to wait before failing navigation
 	elementTimeout        time.Duration          // amount of time to wait for element readiness
@@ -139,7 +139,7 @@ type Tab struct {
 }
 
 // Creates a new tab using the underlying ChromeTarget
-func NewTab(target *gcd.ChromeTarget) *Tab {
+func open(target *gcd.ChromeTarget) (*Tab, error) {
 	t := &Tab{ChromeTarget: target}
 	t.eleMutex = &sync.RWMutex{}
 	t.elements = make(map[int]*Element)
@@ -153,21 +153,44 @@ func NewTab(target *gcd.ChromeTarget) *Tab {
 	t.stabilityTimeout = 2 * time.Second   // default 2 seconds before we give up waiting for stability
 	t.stableAfter = 300 * time.Millisecond // default 300 ms for considering the DOM stable
 	t.domChangeHandler = nil
-	t.Page.Enable()
-	t.DOM.Enable()
-	t.Console.Enable()
-	t.Debugger.Enable()
+
+	if _, err := t.Page.Enable(); err != nil {
+		return nil, err
+	}
+
+	if _, err := t.DOM.Enable(); err != nil {
+		return nil, err
+	}
+
+	if _, err := t.Console.Enable(); err != nil {
+		return nil, err
+	}
+
+	if _, err := t.Debugger.Enable(); err != nil {
+		return nil, err
+	}
 	t.disconnectedHandler = t.defaultDisconnectedHandler
 	t.subscribeEvents()
 	go t.listenDebuggerEvents()
-	return t
+	return t, nil
 }
 
 func (t *Tab) close() {
-	if !t.shutdown {
+	if !t.IsShuttingDown() {
 		close(t.exitCh)
 	}
-	t.shutdown = true
+	t.setShutdownState(true)
+}
+
+func (t *Tab) IsShuttingDown() bool {
+	if flag, ok := t.shutdown.Load().(bool); ok {
+		return flag
+	}
+	return false
+}
+
+func (t *Tab) setShutdownState(val bool) {
+	t.shutdown.Store(val)
 }
 
 // Enable or disable internal debug printing
@@ -1051,6 +1074,11 @@ func (t *Tab) listenDebuggerEvents() {
 
 // handle node change events, updating, inserting invalidating and removing
 func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
+	// if we are shutting down, do not handle new node changes.
+	if t.IsShuttingDown() {
+		return
+	}
+
 	switch change.EventType {
 	case DocumentUpdatedEvent:
 		t.handleDocumentUpdated()
@@ -1080,7 +1108,7 @@ func (t *Tab) handleNodeChange(change *NodeChangeEvent) {
 				ele.updateChildNodeCount(change.ChildNodeCount)
 			}
 			// request the child nodes
-			t.requestChildNodes(change.NodeId, -1)
+			t.requestChildNodes(change.NodeId, 1)
 		}
 	case ChildNodeInsertedEvent:
 		t.handleChildNodeInserted(change.ParentNodeId, change.Node)
@@ -1220,7 +1248,7 @@ func (t *Tab) documentUpdated() {
 	t.getDocument()
 }
 
-// Ask the debugger service for child nodes
+// Ask the debugger service for child nodes.
 func (t *Tab) requestChildNodes(nodeId, depth int) {
 	_, err := t.DOM.RequestChildNodes(nodeId, depth)
 	if err != nil {
@@ -1253,13 +1281,14 @@ func (t *Tab) getElement(nodeId int) (*Element, bool) {
 // events for even more nodes
 func (t *Tab) addNodes(node *gcdapi.DOMNode) {
 	t.debugf("addNode id: %d\n", node.NodeId)
+	t.debugf("%#v\n", node)
 	newEle := t.nodeToElement(node)
 
 	t.eleMutex.Lock()
 	t.elements[newEle.id] = newEle
 	t.eleMutex.Unlock()
 	//log.Printf("Added new element: %s\n", newEle)
-	t.requestChildNodes(newEle.id, -1)
+	t.requestChildNodes(newEle.id, 1)
 	if node.Children != nil {
 		// add child nodes
 		for _, v := range node.Children {

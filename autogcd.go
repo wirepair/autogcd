@@ -106,7 +106,11 @@ func (auto *AutoGcd) Start() error {
 	}
 	auto.tabLock.Lock()
 	for _, tab := range tabs {
-		auto.tabs[tab.Target.Id] = NewTab(tab)
+		t, err := open(tab)
+		if err != nil {
+			return err
+		}
+		auto.tabs[tab.Target.Id] = t
 	}
 	auto.tabLock.Unlock()
 	return nil
@@ -125,13 +129,13 @@ func (auto *AutoGcd) Shutdown() error {
 
 	}
 	auto.tabLock.Unlock()
-	auto.debugger.ExitProcess()
+	err := auto.debugger.ExitProcess()
 	if auto.settings.removeUserDir == true {
 		return os.RemoveAll(auto.settings.userDir)
 	}
 
 	auto.shutdown = true
-	return nil
+	return err
 }
 
 // Refreshs our internal list of tabs and return all tabs
@@ -149,7 +153,11 @@ func (auto *AutoGcd) RefreshTabList() (map[string]*Tab, error) {
 
 	auto.tabLock.Lock()
 	for _, newTab := range newTabs {
-		auto.tabs[newTab.Target.Id] = NewTab(newTab)
+		t, err := open(newTab)
+		if err != nil {
+			return nil, err
+		}
+		auto.tabs[newTab.Target.Id] = t
 	}
 	auto.tabLock.Unlock()
 	return auto.GetAllTabs(), nil
@@ -201,7 +209,10 @@ func (auto *AutoGcd) NewTab() (*Tab, error) {
 	auto.tabLock.Lock()
 	defer auto.tabLock.Unlock()
 
-	tab := NewTab(target)
+	tab, err := open(target)
+	if err != nil {
+		return nil, err
+	}
 	auto.tabs[target.Target.Id] = tab
 	return tab, nil
 }
