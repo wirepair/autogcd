@@ -33,7 +33,7 @@ import (
 func (t *Tab) subscribeTargetCrashed() {
 	t.Subscribe("Inspector.targetCrashed", func(target *gcd.ChromeTarget, payload []byte) {
 		select {
-		case <-t.crashedCh <- "crashed":
+		case t.crashedCh <- "crashed":
 		case <-t.exitCh:
 		}
 	})
@@ -50,7 +50,7 @@ func (t *Tab) subscribeTargetDetached() {
 		}
 
 		select {
-		case <-t.crashedCh <- reason:
+		case t.crashedCh <- reason:
 		case <-t.exitCh:
 		}
 	})
