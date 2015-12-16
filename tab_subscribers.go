@@ -32,7 +32,10 @@ import (
 
 func (t *Tab) subscribeTargetCrashed() {
 	t.Subscribe("Inspector.targetCrashed", func(target *gcd.ChromeTarget, payload []byte) {
-		t.crashedCh <- "crashed"
+		select {
+		case <-t.crashedCh <- "crashed":
+		case <-t.exitCh:
+		}
 	})
 }
 
@@ -40,10 +43,15 @@ func (t *Tab) subscribeTargetDetached() {
 	t.Subscribe("Inspector.detached", func(target *gcd.ChromeTarget, payload []byte) {
 		header := &gcdapi.InspectorDetachedEvent{}
 		err := json.Unmarshal(payload, header)
+		reason := "detached"
+
 		if err == nil {
-			t.crashedCh <- header.Params.Reason
-		} else {
-			t.crashedCh <- "detached"
+			reason = header.Params.Reason
+		}
+
+		select {
+		case <-t.crashedCh <- reason:
+		case <-t.exitCh:
 		}
 	})
 }
