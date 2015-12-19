@@ -6,21 +6,19 @@ autogcd requires [gcd](https://github.com/wirepair/gcd/), [gcdapi](https://githu
 
 ## The API
 Autogcd is comprised of four components:
-* AutoGcd - The wrapper around gcd.Gcd. 
-* Settings - For managing startup of autogcd.
-* Tab - Individual chrome tabs
-* Element - Elements that make up the Page
+* [autogcd.go](https://github.com/wirepair/autogcd/tree/master/autogcd.go) - The wrapper around gcd.Gcd. 
+* [settings.go](https://github.com/wirepair/autogcd/tree/master/settings.go) - For managing startup of autogcd.
+* [settings.go](https://github.com/wirepair/autogcd/tree/master/tab.go) - Individual chrome tabs
+* [settings.go](https://github.com/wirepair/autogcd/tree/master/element.go) - Elements that make up the page (includes iframes, #documents as well)
 
-## Documentation
+## API Documentation
 [Documentation](https://godoc.org/github.com/wirepair/autogcd/)
 
 ## Usage
 See the [examples](https://github.com/wirepair/autogcd/tree/master/examples) or the various testcases.
 
-
 ## Notes
 The chrome debugger service uses internal nodeIds for identifying unique elements/nodes in the DOM. In most cases you will not need to use this identifier directly, however if you plan on calling gcdapi related features you will probably need it. The most common example of when you'll need them is for getting access to a nested #document element inside of an iframe. To run query selectors on nested documents, the nodeId of the iframe #document must be known.
-
 
 ### Frames
 If you need to search elements (by id or by a selector) of a frame's #document, you'll need to get an Element reference that is the iframe's #document. This can be done by doing a tab.GetElementsBySelector("iframe"), iterating over the results and calling element.GetFrameDocumentNodeId(). This will return the internal document node id which you can then pass to tab.GetDocumentElementsBySelector(iframeDocNodeId, "#whatever").
@@ -55,3 +53,19 @@ Pass in a StorageFunc handler to recieve cleared, removed, added and updated sto
 
 #### GetDOMChanges
 Pass in a DomChangeHandlerFunc to receive various dom change events. Call it with a nil handler to stop receiving them.
+
+## Calling gcd directly
+AutoGcd has not implemented all of the Google Chrome Debugger protocol methods and features because I don't see any point in wrapping a lot of them. However, you are not out of luck, all gcd components are bound to each Tab object. I'd suggest reviewing the gcdapi package if there is a particular component you wish to use. All components are bound to the Tab so it should be as simple as calling Tab.<component>.<method>.
+
+### Overriding gcd
+Take a look at [api_overrides.go](https://github.com/wirepair/autogcd/tree/master/api_overrides.go) for an example of overriding gcd methods. In
+some cases the protocol.json specification is incorrect, in which case you may need to override specific methods. Since I designed the packages
+to use an intermediary gcdmessage package for requests and responses you're completely free to override anything necessary. 
+
+## Internals
+I'll admit, I do not fully like the design of the Elements. I have to track state updates very carefully and I chose to use sync.RWMutex locks. I couldn't see an obvious method of using channels to synchronize access to the DOMNodes. I'm very open to new architectures/designs if someone has a better method of keeping Element objects up to date as Chrome notifies autogcd of new values. 
+
+This package has been *heavily* tested in the real world. It was used to scan the top 1 million websites from Alexa. I found numerous goroutine leaks that have been subsequently fixed. After running my scan I no longer see any leaks. It should also be completely safe to kill the browser at any point and not have any runaway go routines since I have channels waiting for close messages at any point a channel is sending or receiving. 
+
+## Reporting Bugs & Requesting Features
+Found a bug? Great! Tell me what version of chrome/chromium you are using and how to reproduce and I'll get to it when I can. Keep in mind this is a side project for me. Same goes for new features. Patches obviously welcome. 

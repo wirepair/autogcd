@@ -478,6 +478,36 @@ func TestTabAfterRedirect(t *testing.T) {
 
 }
 
+func TestTabGetElementAtLocation(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("error opening first window")
+	}
+	tab.WaitStable()
+
+	ele, err := tab.GetElementByLocation(0, 0)
+	if err != nil {
+		t.Fatalf("error getting element at location 0,0: %s\n", err)
+	}
+	ele.WaitForReady()
+
+	name, err := ele.GetTagName()
+	if err != nil {
+		t.Fatalf("error getting tag name of element: %s\n", err)
+	}
+
+	if name != "html" {
+		t.Fatalf("Weird, we didn't get html for the element at 0,0")
+	}
+}
+
 func TestTabFrameRedirect(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()

@@ -317,6 +317,7 @@ func (t *Tab) DidNavigationFail() (bool, string) {
 	if rro.Type == "string" && rro.Value != "" {
 		return true, rro.Value
 	}
+
 	return false, ""
 }
 
@@ -519,6 +520,16 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 	t.elements[nodeId] = newEle // add non-ready element to our list.
 	t.eleMutex.Unlock()
 	return newEle, false
+}
+
+// Returns the element given the x, y coordinates on the page, or returns error.
+func (t *Tab) GetElementByLocation(x, y int) (*Element, error) {
+	nodeId, err := t.DOM.GetNodeForLocation(x, y)
+	if err != nil {
+		return nil, err
+	}
+	ele, _ := t.GetElementByNodeId(nodeId)
+	return ele, nil
 }
 
 // Returns a copy of all currently known elements. Note that modifications to elements
