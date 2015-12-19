@@ -20,6 +20,10 @@ See the [examples](https://github.com/wirepair/autogcd/tree/master/examples) or 
 ## Notes
 The chrome debugger service uses internal nodeIds for identifying unique elements/nodes in the DOM. In most cases you will not need to use this identifier directly, however if you plan on calling gcdapi related features you will probably need it. The most common example of when you'll need them is for getting access to a nested #document element inside of an iframe. To run query selectors on nested documents, the nodeId of the iframe #document must be known.
 
+### Elements
+The Chrome Debugger by nature is far more asynchronous than WebDriver. It is possible to work with elements even though the debugger has not yet notified us of their existence. To deal with this, Elements can be in multiple states; Ready, NotReady or Invalid. Only certain features are available when an Element is in a Ready state. If an Element is Invalid, it should no longer be used and references to it should be
+discarded.
+
 ### Frames
 If you need to search elements (by id or by a selector) of a frame's #document, you'll need to get an Element reference that is the iframe's #document. This can be done by doing a tab.GetElementsBySelector("iframe"), iterating over the results and calling element.GetFrameDocumentNodeId(). This will return the internal document node id which you can then pass to tab.GetDocumentElementsBySelector(iframeDocNodeId, "#whatever").
 
@@ -66,6 +70,8 @@ to use an intermediary gcdmessage package for requests and responses you're comp
 
 ## Internals
 I'll admit, I do not fully like the design of the Elements. I have to track state updates very carefully and I chose to use sync.RWMutex locks. I couldn't see an obvious method of using channels to synchronize access to the DOMNodes. I'm very open to new architectures/designs if someone has a better method of keeping Element objects up to date as Chrome notifies autogcd of new values. 
+
+As mentioned in the Elements section, Chrome Debugger Protocol is fully asynchronous. The debugger is only notified of elements when the page first loads (and even then only a few of the top level elements). It also occurs when an element has been modified, or when you request them with DOM.requestChildNodes. Autogcd tries to manage all of this for you, but there may be a case where you search for elements that chrome has not notified the debugger client yet. In this case the Element will be, in autogcd terminology, NotReady. This means you can sort of work with it because we know its nodeId but we may not know much else (even what type of node it is). Internally almost all chrome debugger methods take nodeIds. 
 
 This package has been *heavily* tested in the real world. It was used to scan the top 1 million websites from Alexa. I found numerous goroutine leaks that have been subsequently fixed. After running my scan I no longer see any leaks. It should also be completely safe to kill the browser at any point and not have any runaway go routines since I have channels waiting for close messages at any point a channel is sending or receiving. 
 
