@@ -8,8 +8,8 @@ autogcd requires [gcd](https://github.com/wirepair/gcd/), [gcdapi](https://githu
 Autogcd is comprised of four components:
 * [autogcd.go](https://github.com/wirepair/autogcd/tree/master/autogcd.go) - The wrapper around gcd.Gcd. 
 * [settings.go](https://github.com/wirepair/autogcd/tree/master/settings.go) - For managing startup of autogcd.
-* [settings.go](https://github.com/wirepair/autogcd/tree/master/tab.go) - Individual chrome tabs
-* [settings.go](https://github.com/wirepair/autogcd/tree/master/element.go) - Elements that make up the page (includes iframes, #documents as well)
+* [tab.go](https://github.com/wirepair/autogcd/tree/master/tab.go) - Individual chrome tabs
+* [element.go](https://github.com/wirepair/autogcd/tree/master/element.go) - Elements that make up the page (includes iframes, #documents as well)
 
 ## API Documentation
 [Documentation](https://godoc.org/github.com/wirepair/autogcd/)
@@ -55,7 +55,7 @@ Pass in a StorageFunc handler to recieve cleared, removed, added and updated sto
 Pass in a DomChangeHandlerFunc to receive various dom change events. Call it with a nil handler to stop receiving them.
 
 ## Calling gcd directly
-AutoGcd has not implemented all of the Google Chrome Debugger protocol methods and features because I don't see any point in wrapping a lot of them. However, you are not out of luck, all gcd components are bound to each Tab object. I'd suggest reviewing the gcdapi package if there is a particular component you wish to use. All components are bound to the Tab so it should be as simple as calling Tab.<component>.<method>.
+AutoGcd has not implemented all of the Google Chrome Debugger protocol methods and features because I don't see any point in wrapping a lot of them. However, you are not out of luck, all gcd components are bound to each Tab object. I'd suggest reviewing the gcdapi package if there is a particular component you wish to use. All components are bound to the Tab so it should be as simple as calling Tab.{component}.{method}.
 
 ### Overriding gcd
 Take a look at [api_overrides.go](https://github.com/wirepair/autogcd/tree/master/api_overrides.go) for an example of overriding gcd methods. In
