@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2015 isaac dawson
+Copyright (c) 2016 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -86,6 +86,7 @@ func ElementAttributeEquals(tab *Tab, element *Element, name, value string) Cond
 	}
 }
 
+// Returns true when a selector returns a valid list of elements.
 func ElementsBySelectorNotEmpty(tab *Tab, elementSelector string) ConditionalFunc {
 	return func(tab *Tab) bool {
 		eles, err := tab.GetElementsBySelector(elementSelector)

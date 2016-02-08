@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2015 isaac dawson
+Copyright (c) 2016 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -58,7 +58,7 @@ func (e *ElementHasNoChildrenErr) Error() string {
 	return "this element has no child elements"
 }
 
-// for when we have an element that has not been populated
+// When we have an element that has not been populated
 // with data yet.
 type ElementNotReadyErr struct {
 }
@@ -67,7 +67,7 @@ func (e *ElementNotReadyErr) Error() string {
 	return "this element is not ready"
 }
 
-// for when the dimensions of an element are incorrect to calculate the centroid
+// When the dimensions of an element are incorrect to calculate the centroid
 type InvalidDimensionsErr struct {
 	Message string
 }
@@ -498,7 +498,7 @@ func (e *Element) GetAttribute(name string) string {
 	return attr[name]
 }
 
-// Similar to above but works for boolean properties (checked, async etc)
+// Similar to above, but works for boolean properties (checked, async etc)
 // Returns true if the attribute is set in our known list of attributes
 // for this element.
 func (e *Element) HasAttribute(name string) bool {
