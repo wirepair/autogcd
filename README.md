@@ -21,8 +21,7 @@ See the [examples](https://github.com/wirepair/autogcd/tree/master/examples) or 
 The chrome debugger service uses internal nodeIds for identifying unique elements/nodes in the DOM. In most cases you will not need to use this identifier directly, however if you plan on calling gcdapi related features you will probably need it. The most common example of when you'll need them is for getting access to a nested #document element inside of an iframe. To run query selectors on nested documents, the nodeId of the iframe #document must be known.
 
 ### Elements
-The Chrome Debugger by nature is far more asynchronous than WebDriver. It is possible to work with elements even though the debugger has not yet notified us of their existence. To deal with this, Elements can be in multiple states; Ready, NotReady or Invalid. Only certain features are available when an Element is in a Ready state. If an Element is Invalid, it should no longer be used and references to it should be
-discarded.
+The Chrome Debugger by nature is far more asynchronous than WebDriver. It is possible to work with elements even though the debugger has not yet notified us of their existence. To deal with this, Elements can be in multiple states; Ready, NotReady or Invalid. Only certain features are available when an Element is in a Ready state. If an Element is Invalid, it should no longer be used and references to it should be discarded.
 
 ### Frames
 If you need to search elements (by id or by a selector) of a frame's #document, you'll need to get an Element reference that is the iframe's #document. This can be done by doing a tab.GetElementsBySelector("iframe"), iterating over the results and calling element.GetFrameDocumentNodeId(). This will return the internal document node id which you can then pass to tab.GetDocumentElementsBySelector(iframeDocNodeId, "#whatever").
@@ -38,9 +37,9 @@ Finally, you can use the tab.WaitFor method, which takes a ConditionalFunc type 
 For example/simple ConditionalFuncs see the [conditionals.go](https://github.com/wirepair/autogcd/tree/master/conditionals.go) source. Of course you can use whatever you want as long as it matches the ConditionalFunc signature.
 
 ### Navigation Errors
-Unlike webdriver, we can actually determine if navigation fails, *at least in chromium. After tab.Navigate(url), calling tab.DidNavigationFail() will return a true/false return value along with a string of the failure type if one did occur. It is strongly recommended you pass the following flags: --test-type, --ignore-certificate-errors on start up of autogcd if you wish to ignore certificate errors.
+Unlike WebDriver, we can determine if navigation fails, *at least in chromium. After tab.Navigate(url), calling tab.DidNavigationFail() will return a true/false return value along with a string of the failure type if one did occur. It is strongly recommended you pass the following flags: --test-type, --ignore-certificate-errors on start up of autogcd if you wish to ignore certificate errors.
 
-\* This does not appear to work in chrome at least on windows.
+\* This does not appear to work in chrome in windows or osx.
 
 ### Input
 Only a limited set of input functions have been implemented. Clicking and sending keys. You can use Element.SendKeys() or send the keys to whatever is focused by using Tab.SendKeys(). Only Enter ("\n"), Tab ("\t") and Backspace ("\b") were implemented, to use them, simply add them to your SendKeys argument Element.SendKeys("enter text hit enter\n") where \n will cause the enter key to be pressed. 
@@ -77,3 +76,27 @@ This package has been *heavily* tested in the real world. It was used to scan th
 
 ## Reporting Bugs & Requesting Features
 Found a bug? Great! Tell me what version of chrome/chromium you are using and how to reproduce and I'll get to it when I can. Keep in mind this is a side project for me. Same goes for new features. Patches obviously welcome. 
+
+
+## License
+The MIT License (MIT)
+
+Copyright (c) 2016 isaac dawson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

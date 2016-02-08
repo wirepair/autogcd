@@ -129,7 +129,7 @@ func TestTabFrameGetPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
@@ -517,7 +517,7 @@ func TestTabFrameRedirect(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	tab.Debug(true)
+	//tab.Debug(true)
 
 	if _, err := tab.Navigate(testServerAddr + "frame_top.html"); err != nil {
 		t.Fatalf("error opening first window")
@@ -543,6 +543,7 @@ func TestTabFrameRedirect(t *testing.T) {
 	}
 	ifrDoc, _ := tab.GetElementByNodeId(ifrDocNodeId)
 
+	// wait for setTimeout redirect
 	time.Sleep(4 * time.Second)
 
 	if !ifr.IsInvalid() {
@@ -578,7 +579,11 @@ func TestTabMultiTab(t *testing.T) {
 	wg.Wait()
 }
 
+// This only works in chromium
 func TestTabNavigationError(t *testing.T) {
+	if !strings.Contains(testPath, "chromium") {
+		return
+	}
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.NewTab()
@@ -629,7 +634,7 @@ func TestTabSslError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	tab.Debug(true)
+	//tab.Debug(true)
 	// Test expired SSL certificate
 	// "--test-type", "--ignore-certificate-errors", should not return any errors
 	if _, err := tab.Navigate("https://expired.identrustssl.com/"); err != nil {
@@ -688,7 +693,7 @@ func TestTabChromeUnhandledCrash(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	timeout := time.NewTimer(time.Second * 10)
-	tab.Debug(true)
+	//tab.Debug(true)
 	go func() {
 		<-timeout.C
 		t.Fatalf("timed out waiting for termination event")
@@ -703,7 +708,6 @@ func TestTabChromeUnhandledCrash(t *testing.T) {
 func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 	var err error
 	var ele *Element
-	// sleep for a random ms so we aren't attempting to send all events at the same time
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		if message.Text == "zomgs Test!" {

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2015 isaac dawson
+Copyright (c) 2016 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -83,6 +83,7 @@ func (e *TimeoutErr) Error() string {
 	return "Timed out " + e.Message
 }
 
+// Internal response function type
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
 // Called when the tab crashes or the inspector was disconnected
@@ -154,6 +155,7 @@ func open(target *gcd.ChromeTarget) (*Tab, error) {
 	t.stableAfter = 300 * time.Millisecond // default 300 ms for considering the DOM stable
 	t.domChangeHandler = nil
 
+	// enable various debugger services
 	if _, err := t.Page.Enable(); err != nil {
 		return nil, err
 	}
@@ -175,6 +177,7 @@ func open(target *gcd.ChromeTarget) (*Tab, error) {
 	return t, nil
 }
 
+// close our exitch.
 func (t *Tab) close() {
 	if !t.IsShuttingDown() {
 		close(t.exitCh)
@@ -182,6 +185,7 @@ func (t *Tab) close() {
 	t.setShutdownState(true)
 }
 
+// Is the tab shutting down?
 func (t *Tab) IsShuttingDown() bool {
 	if flag, ok := t.shutdown.Load().(bool); ok {
 		return flag
@@ -198,6 +202,7 @@ func (t *Tab) Debug(enabled bool) {
 	t.debug = enabled
 }
 
+// Set the disconnected handler so caller can trap when the debugger was disconnected/crashed.
 func (t *Tab) SetDisconnectedHandler(handlerFn TabDisconnectedHandler) {
 	t.disconnectedHandler = handlerFn
 }
@@ -232,6 +237,7 @@ func (t *Tab) setIsNavigating(set bool) {
 	t.isNavigatingFlag.Store(set)
 }
 
+// Are we currently navigating?
 func (t *Tab) IsNavigating() bool {
 	if flag, ok := t.isNavigatingFlag.Load().(bool); ok {
 		return flag
@@ -306,10 +312,10 @@ func (t *Tab) Navigate(url string) (string, error) {
 	return frameId, err
 }
 
-// An undocumented method of determining if chrome failed to load
+// An undocumented method of determining if chromium failed to load
 // a page due to DNS or connection timeouts.
 func (t *Tab) DidNavigationFail() (bool, string) {
-	// if loadTimeData doesn't exist, we get a js error, basically meaning no error occurred.
+	// if loadTimeData doesn't exist, or we get a js error, this means no error occurred.
 	rro, err := t.EvaluateScript("loadTimeData.data_.errorCode")
 	if err != nil {
 		return false, ""
@@ -351,7 +357,7 @@ func (t *Tab) NavigationHistory() (int, []*gcdapi.PageNavigationEntry, error) {
 	return t.Page.GetNavigationHistory()
 }
 
-// Reloads the page injecting evalScript to run on load. set Ignore cache to true
+// Reloads the page injecting evalScript to run on load. set ignoreCache to true
 // to have it act like ctrl+f5.
 func (t *Tab) Reload(ignoreCache bool, evalScript string) error {
 	_, err := t.Page.Reload(ignoreCache, evalScript)
@@ -408,7 +414,7 @@ func (t *Tab) BackEntry() (*gcdapi.PageNavigationEntry, error) {
 	return nil, &InvalidNavigationErr{Message: "Unable to navigate backward as we are on the first navigation entry"}
 }
 
-// Calls a function every rate until conditionFn returns true or timeout occurs.
+// Calls a function every tick until conditionFn returns true or timeout occurs.
 func (t *Tab) WaitFor(rate, timeout time.Duration, conditionFn ConditionalFunc) error {
 	rateTicker := time.NewTicker(rate)
 	timeoutTimer := time.NewTimer(timeout)
@@ -479,7 +485,7 @@ func (t *Tab) GetScriptSource(scriptId string) (string, error) {
 }
 
 // Gets the top document and updates our list of elements DO NOT CALL DOM.GetDocument after
-// the page has loaded, it creates a new nodeId and all functions that look up elements (QuerySelector)
+// the page has loaded, it creates new nodeIds and all functions that look up elements (QuerySelector)
 // will fail.
 func (t *Tab) getDocument() (*Element, error) {
 	doc, err := t.DOM.GetDocument()
@@ -495,6 +501,7 @@ func (t *Tab) getDocument() (*Element, error) {
 	return eleDoc, nil
 }
 
+// Returns the top level document element for this tab.
 func (t *Tab) GetDocument() (*Element, error) {
 	docEle, ok := t.getElement(t.GetTopNodeId())
 	if !ok {
@@ -624,7 +631,7 @@ func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*
 	return elements, nil
 }
 
-// Returns the documents source, as visible, if docId is 0, returns top document source.
+// Returns the document's source, as visible, if docId is 0, returns top document source.
 func (t *Tab) GetPageSource(docNodeId int) (string, error) {
 	if docNodeId == 0 {
 		docNodeId = t.GetTopNodeId()
@@ -754,9 +761,8 @@ func (t *Tab) pressSystemKey(systemKey string) error {
 }
 
 // Injects custom javascript prior to the page loading on all frames. Returns scriptId which
-// can be used to remove the script. Since this loads on all frames, if you only want the
-// script to interact with the top document, you'll need to do checks in the injected script
-// such as testing location.href.
+// can be used to remove the script. If you only want the script to interact with the top
+// document, you'll need to do checks in the injected script such as testing location.href.
 //
 // Alternatively, you can use Tab.EvaluateScript to only work on the global context.
 func (t *Tab) InjectScriptOnLoad(scriptSource string) (string, error) {
@@ -888,7 +894,7 @@ func (t *Tab) StopConsoleMessages(shouldDisable bool) error {
 	return err
 }
 
-// Listens to network traffic, either handler can be nil in which case we'll only call the handler defined.
+// Listens to network traffic, each handler can be nil in which case we'll only call the handlers defined.
 func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, responseHandlerFn NetworkResponseHandlerFunc, finishedHandlerFn NetworkFinishedHandlerFunc) error {
 	if requestHandlerFn == nil && responseHandlerFn == nil && finishedHandlerFn == nil {
 		return nil
@@ -1005,7 +1011,7 @@ func (t *Tab) StopStorageEvents(shouldDisable bool) error {
 }
 
 // Set a handler for javascript prompts, most likely you should call tab.Page.HandleJavaScriptDialog(accept bool, msg string)
-// to actually handle the prompt, otherwise the tab will be blocked waiting for input and never additional events.
+// to actually handle the prompt, otherwise the tab will be blocked waiting for input and never return additional events.
 func (t *Tab) SetJavaScriptPromptHandler(promptHandlerFn PromptHandlerFunc) {
 	t.Subscribe("Page.javascriptDialogOpening", func(target *gcd.ChromeTarget, payload []byte) {
 		message := &gcdapi.PageJavascriptDialogOpeningEvent{}
@@ -1058,7 +1064,7 @@ func (t *Tab) subscribeEvents() {
 	t.subscribeTargetDetached()
 }
 
-// listens for NodeChangeEvents and crash events and dispatches them accordingly.
+// Listens for NodeChangeEvents and crash events, dispatches them accordingly.
 // Calls the user defined domChangeHandler if bound. Updates the lastNodeChangeTime
 // to the current time. If the target crashes or is detached, call the disconnectedHandler.
 func (t *Tab) listenDebuggerEvents() {
