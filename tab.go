@@ -36,6 +36,13 @@ import (
 	"time"
 )
 
+// https://chromium.googlesource.com/chromium/src/+/master/third_party/WebKit/Source/core/inspector/InspectorNetworkAgent.cpp#96
+// 100MB
+const maximumTotalBufferSize = 100 * 1000 * 1000
+
+// 10MB
+const maximumResourceBufferSize = 10 * 1000 * 1000
+
 // When we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
 	Message string
@@ -67,7 +74,7 @@ func (e *InvalidNavigationErr) Error() string {
 type ScriptEvaluationErr struct {
 	Message          string
 	ExceptionText    string
-	ExceptionDetails *gcdapi.DebuggerExceptionDetails
+	ExceptionDetails *gcdapi.RuntimeExceptionDetails
 }
 
 func (e *ScriptEvaluationErr) Error() string {
@@ -899,7 +906,7 @@ func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, resp
 	if requestHandlerFn == nil && responseHandlerFn == nil && finishedHandlerFn == nil {
 		return nil
 	}
-	_, err := t.Network.Enable()
+	_, err := t.Network.Enable(maximumTotalBufferSize, maximumResourceBufferSize)
 	if err != nil {
 		return err
 	}

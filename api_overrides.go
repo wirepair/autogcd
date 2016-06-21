@@ -47,7 +47,7 @@ work.
 // returnByValue - Whether the result is expected to be a JSON object that should be sent by value.
 // generatePreview - Whether preview should be generated for the result.
 // Returns -  result - Evaluation result. wasThrown - True if the result was thrown during the evaluation. exceptionDetails - Exception details.
-func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objectGroup string, includeCommandLineAPI bool, doNotPauseOnExceptionsAndMuteConsole bool, contextId int, returnByValue bool, generatePreview bool) (*gcdapi.RuntimeRemoteObject, bool, *gcdapi.DebuggerExceptionDetails, error) {
+func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objectGroup string, includeCommandLineAPI bool, doNotPauseOnExceptionsAndMuteConsole bool, contextId int, returnByValue bool, generatePreview bool) (*gcdapi.RuntimeRemoteObject, bool, *gcdapi.RuntimeExceptionDetails, error) {
 	paramRequest := make(map[string]interface{}, 7)
 	paramRequest["expression"] = expression
 	paramRequest["objectGroup"] = objectGroup
@@ -72,7 +72,7 @@ func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objec
 		Result struct {
 			Result           *gcdapi.RuntimeRemoteObject
 			WasThrown        bool
-			ExceptionDetails *gcdapi.DebuggerExceptionDetails
+			ExceptionDetails *gcdapi.RuntimeExceptionDetails
 		}
 	}
 	// test if error first

@@ -1,6 +1,9 @@
 # Automating Google Chrome Debugger (autogcd)
 Autogcd is a wrapper around the [gcd](https://github.com/wirepair/gcd/) library to enable automation of Google Chrome. It some what mimics the functionality offered by WebDriver but allows more low level access via the debugger service. 
 
+## Changelog
+June 2016: Updated to latest gcd / protocol.json file. Fixed calls to Network.Enable to take in the required buffer sizes.
+
 ## Dependencies
 autogcd requires [gcd](https://github.com/wirepair/gcd/), [gcdapi](https://github.com/wirepair/gcd/tree/master/gcdapi) and [gcdmessage](https://github.com/wirepair/gcd/tree/master/gcdmessage) packages. 
 
