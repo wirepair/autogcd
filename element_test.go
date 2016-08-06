@@ -469,6 +469,43 @@ func TestElementFrameGetTag(t *testing.T) {
 	}
 }
 
+// test get frames outside of <body> tags
+func TestElementFrameSet(t *testing.T) {
+	var err error
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	_, err = tab.Navigate(testServerAddr + "frameset.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	if err := tab.WaitStable(); err != nil {
+		t.Fatalf("error waiting for stable: %s\n", err)
+	}
+
+	frs := tab.GetFrameDocuments()
+	if frs == nil {
+		t.Fatalf("error getting frames, because nil\n")
+	}
+	for _, fr := range frs {
+		str, err := fr.GetSource()
+		if err != nil {
+			t.Fatalf("error getting source: %s\n", err)
+		}
+		var isDoc bool
+		isDoc, err = fr.IsDocument()
+		if err != nil {
+			t.Fatalf("error testing if the frame is a document\n")
+		}
+		t.Logf("frame is doc: %t source: %s\n", isDoc, str)
+	}
+}
+
 func TestElementInvalidated(t *testing.T) {
 	var err error
 	var ele *Element
