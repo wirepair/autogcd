@@ -26,10 +26,11 @@ package autogcd
 
 import (
 	"fmt"
-	"github.com/wirepair/gcd/gcdapi"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wirepair/gcd/gcdapi"
 )
 
 // An attempt was made to execute a method for which the element type is incorrect
@@ -126,6 +127,10 @@ func (e *Element) populateElement(node *gcdapi.DOMNode) {
 	e.nodeType = node.NodeType
 	e.nodeName = strings.ToLower(node.NodeName)
 	e.childNodeCount = node.ChildNodeCount
+	if node.NodeType == int(TEXT_NODE) {
+		e.characterData = node.NodeValue
+	}
+
 	e.lock.Unlock()
 
 	for i := 0; i < len(node.Attributes); i += 2 {
@@ -405,6 +410,18 @@ func (e *Element) GetNodeType() (int, error) {
 		return -1, &ElementNotReadyErr{}
 	}
 	return e.nodeType, nil
+}
+
+// Returns the character data if the element is in a ready state.
+func (e *Element) GetCharacterData() (string, error) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+
+	if !e.ready {
+		return "", &ElementNotReadyErr{}
+	}
+
+	return e.characterData, nil
 }
 
 // Returns true if the node is enabled, only makes sense for form controls.
