@@ -25,15 +25,17 @@ THE SOFTWARE.
 package autogcd
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/wirepair/gcd"
-	"github.com/wirepair/gcd/gcdapi"
 	"log"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/wirepair/gcd"
+	"github.com/wirepair/gcd/gcdapi"
 )
 
 // https://chromium.googlesource.com/chromium/src/+/master/third_party/WebKit/Source/core/inspector/InspectorNetworkAgent.cpp#96
@@ -601,6 +603,17 @@ func (t *Tab) GetChildElementsOfType(element *Element, tagType string) []*Elemen
 	}
 	t.recursivelyGetChildren(element.node.Children, &elements, tagType)
 	return elements
+}
+
+// Returns the #text values of the element's children.
+func (t *Tab) GetChildrensCharacterData(element *Element) string {
+	var buf bytes.Buffer
+	for _, el := range t.GetChildElements(element) {
+		if el.nodeType == int(TEXT_NODE) {
+			buf.WriteString(el.characterData)
+		}
+	}
+	return buf.String()
 }
 
 func (t *Tab) recursivelyGetChildren(children []*gcdapi.DOMNode, elements *[]*Element, tagType string) {
