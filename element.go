@@ -527,6 +527,21 @@ func (e *Element) HasAttribute(name string) bool {
 	return exists
 }
 
+// SetAttributeValue sets an element's attribute with name to value.
+func (e *Element) SetAttributeValue(name, value string) error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
+	_, err := e.tab.DOM.SetAttributeValue(e.id, name, value)
+	if err != nil {
+		return err
+	}
+
+	e.attributes[name] = value
+
+	return nil
+}
+
 // Works like WebDriver's clear(), simply sets the attribute value for input
 // or clears the value for textarea. This element must be ready so we can
 // properly read the nodeName value.

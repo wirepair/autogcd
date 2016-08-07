@@ -1,10 +1,11 @@
 package autogcd
 
 import (
-	"github.com/wirepair/gcd/gcdapi"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wirepair/gcd/gcdapi"
 )
 
 var (
@@ -296,6 +297,70 @@ func TestElementGetAttributes(t *testing.T) {
 
 	if attrs["disabled"] != "" {
 		t.Fatalf("disabled attribute incorrect")
+	}
+}
+
+func TestElementSetAttributeValue(t *testing.T) {
+	var err error
+	var ele *Element
+	var attrs map[string]string
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	//tab.Debug(true)
+
+	_, err = tab.Navigate(testServerAddr + "attributes.html")
+	if err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
+	if err != nil {
+		t.Fatalf("error finding attr, timed out waiting: %s\n", err)
+	}
+
+	ele, _, err = tab.GetElementById("attr")
+	if err != nil {
+		t.Fatalf("error finding input: %s %#v\n", err, ele)
+	}
+
+	attrs, err = ele.GetAttributes()
+	if err != nil {
+		t.Fatalf("error getting attributes: %s\n", err)
+	}
+
+	if attrs["x"] != "y" {
+		t.Fatalf("x attribute incorrect")
+	}
+
+	if attrs["z"] != "1" {
+		t.Fatalf("z attribute incorrect")
+	}
+
+	err = ele.SetAttributeValue("x", "noty")
+	if err != nil {
+		t.Fatalf("error setting attribute value: %s\n", err)
+	}
+
+	err = ele.SetAttributeValue("z", "not1")
+	if err != nil {
+		t.Fatalf("error setting attribute value: %s\n", err)
+	}
+
+	attrs, err = ele.GetAttributes()
+	if err != nil {
+		t.Fatalf("error getting attributes: %s\n", err)
+	}
+
+	if attrs["x"] != "noty" {
+		t.Fatalf("x attribute incorrect")
+	}
+
+	if attrs["z"] != "not1" {
+		t.Fatalf("z attribute incorrect")
 	}
 }
 
