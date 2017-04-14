@@ -205,6 +205,7 @@ func (e *Element) GetSource() (string, error) {
 	if e.invalidated {
 		return "", &InvalidElementErr{}
 	}
+	e.tab.debugf("id: %d\n", id)
 	return e.tab.DOM.GetOuterHTML(id)
 }
 
@@ -270,7 +271,7 @@ func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error
 	if err != nil {
 		return nil, err
 	}
-	eventListeners, err := e.tab.DOMDebugger.GetEventListeners(rro.ObjectId)
+	eventListeners, err := e.tab.DOMDebugger.GetEventListeners(rro.ObjectId, 1, false)
 	if err != nil {
 		return nil, err
 	}

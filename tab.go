@@ -307,7 +307,7 @@ func (t *Tab) Navigate(url string) (string, error) {
 		t.setIsNavigating(false)
 	}()
 
-	frameId, err := t.Page.Navigate(url)
+	frameId, err := t.Page.Navigate(url, "")
 	if err != nil {
 		return "", err
 	}
@@ -497,7 +497,7 @@ func (t *Tab) GetScriptSource(scriptId string) (string, error) {
 // the page has loaded, it creates new nodeIds and all functions that look up elements (QuerySelector)
 // will fail.
 func (t *Tab) getDocument() (*Element, error) {
-	doc, err := t.DOM.GetDocument()
+	doc, err := t.DOM.GetDocument(-1, false)
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +540,7 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 
 // Returns the element given the x, y coordinates on the page, or returns error.
 func (t *Tab) GetElementByLocation(x, y int) (*Element, error) {
-	nodeId, err := t.DOM.GetNodeForLocation(x, y)
+	nodeId, err := t.DOM.GetNodeForLocation(x, y, false)
 	if err != nil {
 		return nil, err
 	}
@@ -801,17 +801,28 @@ func (t *Tab) RemoveScriptFromOnLoad(scriptId string) error {
 
 // Evaluates script in the global context.
 func (t *Tab) EvaluateScript(scriptSource string) (*gcdapi.RuntimeRemoteObject, error) {
+	return t.evaluateScript(scriptSource, false)
+}
+
+// Evaluates script in the global context.
+func (t *Tab) EvaluatePromiseScript(scriptSource string) (*gcdapi.RuntimeRemoteObject, error) {
+	return t.evaluateScript(scriptSource, true)
+}
+
+// Evaluates script in the global context.
+func (t *Tab) evaluateScript(scriptSource string, awaitPromise bool) (*gcdapi.RuntimeRemoteObject, error) {
 	objectGroup := "autogcd"
 	includeCommandLineAPI := true
-	doNotPauseOnExceptionsAndMuteConsole := true
 	contextId := 0
+	silent := true
 	returnByValue := true
 	generatePreview := true
-	rro, thrown, exception, err := overridenRuntimeEvaluate(t.ChromeTarget, scriptSource, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, contextId, returnByValue, generatePreview)
+	userGestures := true
+	rro, exception, err := overridenRuntimeEvaluate(t.ChromeTarget, scriptSource, objectGroup, includeCommandLineAPI, silent, contextId, returnByValue, generatePreview, userGestures, awaitPromise)
 	if err != nil {
 		return nil, err
 	}
-	if thrown || exception != nil {
+	if exception != nil {
 		return nil, &ScriptEvaluationErr{Message: "error executing script: ", ExceptionText: exception.Text, ExceptionDetails: exception}
 	}
 	return rro, nil
@@ -820,7 +831,7 @@ func (t *Tab) EvaluateScript(scriptSource string) (*gcdapi.RuntimeRemoteObject, 
 // Takes a screenshot of the currently loaded page (only the dimensions visible in browser window)
 func (t *Tab) GetScreenShot() ([]byte, error) {
 	var imgBytes []byte
-	img, err := t.Page.CaptureScreenshot()
+	img, err := t.Page.CaptureScreenshot("png", 0, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1287,7 +1298,7 @@ func (t *Tab) documentUpdated() {
 
 // Ask the debugger service for child nodes.
 func (t *Tab) requestChildNodes(nodeId, depth int) {
-	_, err := t.DOM.RequestChildNodes(nodeId, depth)
+	_, err := t.DOM.RequestChildNodes(nodeId, depth, false)
 	if err != nil {
 		t.debugf("error requesting child nodes: %s\n", err)
 	}

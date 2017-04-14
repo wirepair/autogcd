@@ -102,6 +102,7 @@ func TestElementClick(t *testing.T) {
 	}()
 
 	wg.Wait()
+	timeout.Stop()
 }
 
 func TestElementMouseOver(t *testing.T) {
@@ -128,11 +129,11 @@ func TestElementMouseOver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
-	/*
-		err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "button"))
-		if err != nil {
-			t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
-		}*/
+
+	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "button"))
+	if err != nil {
+		t.Fatalf("error finding buttons, timed out waiting: %s\n", err)
+	}
 
 	button, _, err := tab.GetElementById("button")
 	if err != nil {
@@ -153,6 +154,7 @@ func TestElementMouseOver(t *testing.T) {
 	}()
 
 	wg.Wait()
+	timeout.Stop()
 }
 
 func TestElementDoubleClick(t *testing.T) {
@@ -204,6 +206,7 @@ func TestElementDoubleClick(t *testing.T) {
 	}(timeout)
 
 	wg.Wait()
+	timeout.Stop()
 }
 
 func TestElementGetSource(t *testing.T) {
@@ -477,7 +480,7 @@ func TestElementGetEventListeners(t *testing.T) {
 	listeners, err := ele.GetEventListeners()
 	for _, listener := range listeners {
 		//t.Logf("%#v\n", listener)
-		_, err := tab.GetScriptSource(listener.Location.ScriptId)
+		_, err := tab.GetScriptSource(listener.ScriptId)
 		if err != nil {
 			t.Fatalf("error getting source: %s\n", err)
 		}
@@ -545,6 +548,8 @@ func TestElementFrameSet(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
+	//tab.Debug(true)
+
 	_, err = tab.Navigate(testServerAddr + "frameset.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
@@ -557,10 +562,15 @@ func TestElementFrameSet(t *testing.T) {
 	if frs == nil {
 		t.Fatalf("error getting frames, because nil\n")
 	}
+	t.Logf("# of frames: %d\n", len(frs))
 	for _, fr := range frs {
+		fr.WaitForReady()
+		if fr.IsInvalid() {
+			continue
+		}
 		str, err := fr.GetSource()
 		if err != nil {
-			t.Fatalf("error getting source: %s\n", err)
+			t.Logf("error getting source: %s\n", err)
 		}
 		var isDoc bool
 		isDoc, err = fr.IsDocument()

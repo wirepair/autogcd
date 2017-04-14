@@ -34,6 +34,8 @@ func TestTabGetCurrentUrl(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "console.html?x=1"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+	tab.WaitStable()
+
 	url, err := tab.GetCurrentUrl()
 	if err != nil {
 		t.Fatalf("error getting url: %s\n", err)
@@ -108,6 +110,8 @@ func TestTabGetPageSource(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+	tab.WaitStable()
+
 	ele, err := tab.GetDocument()
 	if err != nil {
 		t.Fatalf("error getting tab document")
@@ -385,6 +389,8 @@ func TestTabWindows(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
+	tab.WaitStable()
+
 	t.Logf("# of elements: %d\n", len(tab.elements))
 	ele, _, err := tab.GetElementById("mainwindow")
 	if err != nil {
@@ -416,6 +422,8 @@ func TestTabAfterRedirect(t *testing.T) {
 	if _, err := tab.Navigate(testServerAddr + "redirect.html"); err != nil {
 		t.Fatalf("error opening first window")
 	}
+
+	tab.WaitStable()
 
 	url, err := tab.GetCurrentUrl()
 	if err != nil {
@@ -523,6 +531,8 @@ func TestTabFrameRedirect(t *testing.T) {
 		t.Fatalf("error opening first window")
 	}
 
+	tab.WaitStable()
+
 	ifr, ready, err := tab.GetElementById("frameredirect")
 	if err != nil {
 		t.Fatalf("error finding frame element")
@@ -543,11 +553,13 @@ func TestTabFrameRedirect(t *testing.T) {
 	}
 	ifrDoc, _ := tab.GetElementByNodeId(ifrDocNodeId)
 
+	ifrDoc.WaitForReady()
+
 	// wait for setTimeout redirect
-	time.Sleep(4 * time.Second)
+	time.Sleep(6 * time.Second)
 
 	if !ifr.IsInvalid() {
-		t.Fatalf("error iframe was not invalidated after redirect")
+		t.Fatalf("error iframe was not invalidated after redirect: %d\n", ifr.NodeId())
 	}
 
 	if !ifrDoc.IsInvalid() {
@@ -722,6 +734,8 @@ func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+
+	tab.WaitStable()
 
 	ele, _, err = tab.GetElementById("attr")
 	if err != nil {

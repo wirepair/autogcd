@@ -37,54 +37,56 @@ work.
 */
 
 // Evaluate - Evaluates expression on global object.
-// This method is overriden because the docs lie, passing 0 returns invalid context id, we must remove it from the map
-// entirely for the call to work on the global object.
 // expression - Expression to evaluate.
 // objectGroup - Symbolic group name that can be used to release multiple objects.
 // includeCommandLineAPI - Determines whether Command Line API should be available during the evaluation.
-// doNotPauseOnExceptionsAndMuteConsole - Specifies whether evaluation should stop on exceptions and mute console. Overrides setPauseOnException state.
-// contextId - Specifies in which isolated context to perform evaluation. Each content script lives in an isolated context and this parameter may be used to specify one of those contexts. If the parameter is omitted or 0 the evaluation will be performed in the context of the inspected page.
+// silent - In silent mode exceptions thrown during evaluation are not reported and do not pause execution. Overrides <code>setPauseOnException</code> state.
+// contextId - Specifies in which execution context to perform evaluation. If the parameter is omitted the evaluation will be performed in the context of the inspected page.
 // returnByValue - Whether the result is expected to be a JSON object that should be sent by value.
 // generatePreview - Whether preview should be generated for the result.
-// Returns -  result - Evaluation result. wasThrown - True if the result was thrown during the evaluation. exceptionDetails - Exception details.
-func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objectGroup string, includeCommandLineAPI bool, doNotPauseOnExceptionsAndMuteConsole bool, contextId int, returnByValue bool, generatePreview bool) (*gcdapi.RuntimeRemoteObject, bool, *gcdapi.RuntimeExceptionDetails, error) {
-	paramRequest := make(map[string]interface{}, 7)
+// userGesture - Whether execution should be treated as initiated by user in the UI.
+// awaitPromise - Whether execution should wait for promise to be resolved. If the result of evaluation is not a Promise, it's considered to be an error.
+// Returns -  result - Evaluation result. exceptionDetails - Exception details.
+func overridenRuntimeEvaluate(target *gcd.ChromeTarget, expression string, objectGroup string, includeCommandLineAPI bool, silent bool, contextId int, returnByValue bool, generatePreview bool, userGesture bool, awaitPromise bool) (*gcdapi.RuntimeRemoteObject, *gcdapi.RuntimeExceptionDetails, error) {
+	paramRequest := make(map[string]interface{}, 9)
 	paramRequest["expression"] = expression
 	paramRequest["objectGroup"] = objectGroup
 	paramRequest["includeCommandLineAPI"] = includeCommandLineAPI
-	paramRequest["doNotPauseOnExceptionsAndMuteConsole"] = doNotPauseOnExceptionsAndMuteConsole
+	paramRequest["silent"] = silent
 	// only add context id if it's non-zero
 	if contextId != 0 {
 		paramRequest["contextId"] = contextId
 	}
 	paramRequest["returnByValue"] = returnByValue
 	paramRequest["generatePreview"] = generatePreview
+	paramRequest["userGesture"] = userGesture
+	paramRequest["awaitPromise"] = awaitPromise
 	resp, err := gcdmessage.SendCustomReturn(target, target.GetSendCh(), &gcdmessage.ParamRequest{Id: target.GetId(), Method: "Runtime.evaluate", Params: paramRequest})
 	if err != nil {
-		return nil, false, nil, err
-	}
-
-	if resp == nil {
-		return nil, false, nil, &gcdmessage.ChromeEmptyResponseErr{}
+		return nil, nil, err
 	}
 
 	var chromeData struct {
 		Result struct {
 			Result           *gcdapi.RuntimeRemoteObject
-			WasThrown        bool
 			ExceptionDetails *gcdapi.RuntimeExceptionDetails
 		}
 	}
+
+	if resp == nil {
+		return nil, nil, &gcdmessage.ChromeEmptyResponseErr{}
+	}
+
 	// test if error first
 	cerr := &gcdmessage.ChromeErrorResponse{}
 	json.Unmarshal(resp.Data, cerr)
 	if cerr != nil && cerr.Error != nil {
-		return nil, false, nil, &gcdmessage.ChromeRequestErr{Resp: cerr}
+		return nil, nil, &gcdmessage.ChromeRequestErr{Resp: cerr}
 	}
 
 	if err := json.Unmarshal(resp.Data, &chromeData); err != nil {
-		return nil, false, nil, err
+		return nil, nil, err
 	}
 
-	return chromeData.Result.Result, chromeData.Result.WasThrown, chromeData.Result.ExceptionDetails, nil
+	return chromeData.Result.Result, chromeData.Result.ExceptionDetails, nil
 }
