@@ -49,9 +49,10 @@ package autogcd
 import (
 	"errors"
 	"fmt"
-	"github.com/wirepair/gcd"
 	"os"
 	"sync"
+
+	"github.com/wirepair/gcd"
 )
 
 type AutoGcd struct {
@@ -99,7 +100,12 @@ func (auto *AutoGcd) SetTerminationHandler(handler gcd.TerminatedHandler) {
 
 // Starts Google Chrome with debugging enabled.
 func (auto *AutoGcd) Start() error {
-	auto.debugger.StartProcess(auto.settings.chromePath, auto.settings.userDir, auto.settings.chromePort)
+	if auto.settings.connectToInstance {
+		auto.debugger.ConnectToInstance(auto.settings.chromeHost, auto.settings.chromePort)
+	} else {
+		auto.debugger.StartProcess(auto.settings.chromePath, auto.settings.userDir, auto.settings.chromePort)
+	}
+
 	tabs, err := auto.debugger.GetTargets()
 	if err != nil {
 		return err
