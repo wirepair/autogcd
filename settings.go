@@ -30,15 +30,16 @@ import (
 )
 
 type Settings struct {
-	timeout       time.Duration // timeout for giving up on chrome starting and connecting to the debugger service
-	chromePath    string        // path to chrome
-	chromeHost    string        // can really only be localhost
-	chromePort    string        // port to chrome debugger
-	userDir       string        // the user directory to use
-	removeUserDir bool          // should we delete the user directory on shutdown?
-	extensions    []string      // custom extensions to load
-	flags         []string      // custom os.Environ flags to use to start the chrome process
-	env           []string      // custom env vars for launching the process
+	connectToInstance bool
+	timeout           time.Duration // timeout for giving up on chrome starting and connecting to the debugger service
+	chromePath        string        // path to chrome
+	chromeHost        string        // can really only be localhost
+	chromePort        string        // port to chrome debugger
+	userDir           string        // the user directory to use
+	removeUserDir     bool          // should we delete the user directory on shutdown?
+	extensions        []string      // custom extensions to load
+	flags             []string      // custom os.Environ flags to use to start the chrome process
+	env               []string      // custom env vars for launching the process
 }
 
 // Creates a new settings object to start Chrome and enable remote debugging
@@ -52,6 +53,13 @@ func NewSettings(chromePath, userDir string) *Settings {
 	s.flags = make([]string, 0)
 	s.env = make([]string, 0)
 	return s
+}
+
+//Set a instance to connect to other than start a new process
+func (s *Settings) SetInstance(host, port string) {
+	s.chromeHost = host
+	s.chromePort = port
+	s.connectToInstance = true
 }
 
 // Can really only be localhost, but this may change in the future so support it anyways.
