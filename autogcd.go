@@ -135,13 +135,17 @@ func (auto *AutoGcd) Shutdown() error {
 
 	}
 	auto.tabLock.Unlock()
-	err := auto.debugger.ExitProcess()
-	if auto.settings.removeUserDir == true {
-		return os.RemoveAll(auto.settings.userDir)
+
+	if !auto.settings.connectToInstance {
+		err := auto.debugger.ExitProcess()
+		if auto.settings.removeUserDir == true {
+			return os.RemoveAll(auto.settings.userDir)
+		}
+		return err
 	}
 
 	auto.shutdown = true
-	return err
+	return nil
 }
 
 // Refreshs our internal list of tabs and return all tabs
