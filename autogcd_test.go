@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"testing"
 	"time"
@@ -181,4 +183,88 @@ func testRandomDir(t *testing.T) string {
 		t.Fatalf("error getting temp dir: %s\n", err)
 	}
 	return dir
+}
+
+func testInstanceStartup(t *testing.T) (*AutoGcd, *exec.Cmd) {
+	// ta := testDefaultStartup(t)
+	port := testRandomPort(t)
+	userDir := testRandomDir(t)
+	flags := append(testStartupFlags, fmt.Sprintf("--remote-debugging-port=%s", port))
+	flags = append(flags, fmt.Sprintf("--user-data-dir=%s", userDir))
+	cmd := exec.Command(testPath, flags...)
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("start chrome ret err %+v", err)
+		return nil, nil
+	}
+	s := NewSettings("", "")
+
+	s.SetInstance("localhost", port)
+
+	auto := NewAutoGcd(s)
+	auto.Start()
+	if err := auto.Start(); err != nil {
+		t.Fatalf("failed to start chrome: %s\n", err)
+	}
+	auto.SetTerminationHandler(nil) // do not want our tests to panic
+	return auto, cmd
+}
+
+func TestInstanceGetTab(t *testing.T) {
+	var err error
+	var tab *Tab
+	auto, cmd := testInstanceStartup(t)
+	defer func() { auto.Shutdown(); cmd.Process.Kill() }()
+
+	tab, err = auto.GetTab()
+	if err != nil {
+		t.Fatalf("Error getting tab: %s\n", err)
+	}
+
+	if tab.Target.Type != "page" {
+		t.Fatalf("Got tab but wasn't of type Page")
+	}
+}
+
+func TestInstanceNewTab(t *testing.T) {
+	//var newTab *Tab
+	auto, cmd := testInstanceStartup(t)
+	defer func() { auto.Shutdown(); cmd.Process.Kill() }()
+
+	tabLen := len(auto.tabs)
+	_, err := auto.NewTab()
+	if err != nil {
+		t.Fatalf("error creating new tab: %s\n", err)
+	}
+
+	if tabLen+1 != len(auto.tabs) {
+		t.Fatalf("error created new tab but not reflected in our map")
+	}
+}
+
+func TestInstanceCloseTab(t *testing.T) {
+	var err error
+	var newTab *Tab
+	auto, cmd := testInstanceStartup(t)
+	defer func() { auto.Shutdown(); cmd.Process.Kill() }()
+
+	tabLen := len(auto.tabs)
+
+	newTab, err = auto.NewTab()
+	if err != nil {
+		t.Fatalf("error creating new tab: %s\n", err)
+	}
+
+	if tabLen+1 != len(auto.tabs) {
+		t.Fatalf("error created new tab but not reflected in our map")
+	}
+
+	err = auto.CloseTab(newTab)
+	if err != nil {
+		t.Fatalf("error closing tab")
+	}
+
+	if _, err := auto.tabById(newTab.Target.Id); err == nil {
+		t.Fatalf("error closed tab still in our map")
+	}
 }
