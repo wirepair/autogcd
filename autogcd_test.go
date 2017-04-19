@@ -185,7 +185,7 @@ func testRandomDir(t *testing.T) string {
 	return dir
 }
 
-func testInstanceStartup(t *testing.T) *AutoGcd {
+func testInstanceStartup(t *testing.T) (*AutoGcd, *exec.Cmd) {
 	// ta := testDefaultStartup(t)
 	port := testRandomPort(t)
 	userDir := testRandomDir(t)
@@ -195,7 +195,7 @@ func testInstanceStartup(t *testing.T) *AutoGcd {
 	err := cmd.Start()
 	if err != nil {
 		log.Printf("start chrome ret err %+v", err)
-		return nil
+		return nil, nil
 	}
 	s := NewSettings("", "")
 
@@ -207,14 +207,14 @@ func testInstanceStartup(t *testing.T) *AutoGcd {
 		t.Fatalf("failed to start chrome: %s\n", err)
 	}
 	auto.SetTerminationHandler(nil) // do not want our tests to panic
-	return auto
+	return auto, cmd
 }
 
 func TestInstanceGetTab(t *testing.T) {
 	var err error
 	var tab *Tab
-	auto := testInstanceStartup(t)
-	defer auto.Shutdown() //no effect
+	auto, cmd := testInstanceStartup(t)
+	defer func() { auto.Shutdown(); cmd.Process.Kill() }()
 
 	tab, err = auto.GetTab()
 	if err != nil {
@@ -228,8 +228,8 @@ func TestInstanceGetTab(t *testing.T) {
 
 func TestInstanceNewTab(t *testing.T) {
 	//var newTab *Tab
-	auto := testInstanceStartup(t)
-	defer auto.Shutdown()
+	auto, cmd := testInstanceStartup(t)
+	defer func() { auto.Shutdown(); cmd.Process.Kill() }()
 
 	tabLen := len(auto.tabs)
 	_, err := auto.NewTab()
@@ -245,8 +245,8 @@ func TestInstanceNewTab(t *testing.T) {
 func TestInstanceCloseTab(t *testing.T) {
 	var err error
 	var newTab *Tab
-	auto := testInstanceStartup(t)
-	defer auto.Shutdown()
+	auto, cmd := testInstanceStartup(t)
+	defer func() { auto.Shutdown(); cmd.Process.Kill() }()
 
 	tabLen := len(auto.tabs)
 
