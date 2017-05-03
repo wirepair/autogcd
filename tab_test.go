@@ -47,13 +47,14 @@ func TestTabGetCurrentUrl(t *testing.T) {
 
 func TestTabGetTitle(t *testing.T) {
 	testAuto := testDefaultStartup(t)
+
 	defer testAuto.Shutdown()
 
 	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-
+	tab.DebugEvents(true)
 	if _, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}

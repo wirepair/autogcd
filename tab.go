@@ -329,8 +329,9 @@ func (t *Tab) DidNavigationFail() (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	if rro.Type == "string" && rro.Value != "" {
-		return true, rro.Value
+
+	if val, ok := rro.Value.(string); ok {
+		return true, val
 	}
 
 	return false, ""
@@ -844,11 +845,18 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 
 // Returns the top document title
 func (t *Tab) GetTitle() (string, error) {
+	var title string
+	var ok bool
+
 	resp, err := t.EvaluateScript("window.top.document.title")
 	if err != nil {
 		return "", err
 	}
-	return resp.Value, nil
+
+	if title, ok = resp.Value.(string); !ok {
+		return "", &ScriptEvaluationErr{Message: "title was not a string", ExceptionText: "unable to retrieve document title, was not a string"}
+	}
+	return title, nil
 }
 
 // Returns the raw source (non-serialized DOM) of the frame. If you want the visible
