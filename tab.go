@@ -307,7 +307,7 @@ func (t *Tab) Navigate(url string) (string, error) {
 		t.setIsNavigating(false)
 	}()
 
-	frameId, err := t.Page.Navigate(url, "")
+	frameId, err := t.Page.Navigate(url, "", "typed")
 	if err != nil {
 		return "", err
 	}
