@@ -679,11 +679,11 @@ func (t *Tab) GetDocumentCurrentUrl(docNodeId int) (string, error) {
 }
 
 // Issues a left button mousePressed then mouseReleased on the x, y coords provided.
-func (t *Tab) Click(x, y int) error {
+func (t *Tab) Click(x, y float64) error {
 	return t.click(x, y, 1)
 }
 
-func (t *Tab) click(x, y, clickCount int) error {
+func (t *Tab) click(x, y float64, clickCount int) error {
 	// "mousePressed", "mouseReleased", "mouseMoved"
 	// enum": ["none", "left", "middle", "right"]
 	pressed := "mousePressed"
@@ -703,12 +703,12 @@ func (t *Tab) click(x, y, clickCount int) error {
 }
 
 // Issues a double click on the x, y coords provided.
-func (t *Tab) DoubleClick(x, y int) error {
+func (t *Tab) DoubleClick(x, y float64) error {
 	return t.click(x, y, 2)
 }
 
 // Moves the mouse to the x, y coords provided.
-func (t *Tab) MoveMouse(x, y int) error {
+func (t *Tab) MoveMouse(x, y float64) error {
 	_, err := t.Input.DispatchMouseEvent("mouseMoved", x, y, 0, 0.0, "none", 0)
 	return err
 }
@@ -832,7 +832,13 @@ func (t *Tab) evaluateScript(scriptSource string, awaitPromise bool) (*gcdapi.Ru
 // Takes a screenshot of the currently loaded page (only the dimensions visible in browser window)
 func (t *Tab) GetScreenShot() ([]byte, error) {
 	var imgBytes []byte
-	img, err := t.Page.CaptureScreenshot("png", 0, false)
+
+	params := &gcdapi.PageCaptureScreenshotParams{
+		Format:  "png",
+		Quality: 100,
+	}
+
+	img, err := t.Page.CaptureScreenshotWithParams(params)
 	if err != nil {
 		return nil, err
 	}

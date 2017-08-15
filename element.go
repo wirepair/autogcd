@@ -267,7 +267,11 @@ func (e *Element) GetEventListeners() ([]*gcdapi.DOMDebuggerEventListener, error
 	id := e.id
 	e.lock.RUnlock()
 
-	rro, err := e.tab.DOM.ResolveNode(id, "")
+	params := &gcdapi.DOMResolveNodeParams{
+		NodeId: id,
+	}
+
+	rro, err := e.tab.DOM.ResolveNodeWithParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +581,7 @@ func (e *Element) Click() error {
 	}
 
 	// click the centroid of the element.
-	return e.tab.Click(x, y)
+	return e.tab.Click(float64(x), float64(y))
 }
 
 // Double clicks the center of the element.
@@ -587,7 +591,7 @@ func (e *Element) DoubleClick() error {
 		return err
 	}
 
-	return e.tab.DoubleClick(x, y)
+	return e.tab.DoubleClick(float64(x), float64(y))
 }
 
 // Focus on the element.
@@ -595,7 +599,10 @@ func (e *Element) Focus() error {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 
-	_, err := e.tab.DOM.Focus(e.id)
+	params := &gcdapi.DOMFocusParams{
+		NodeId: e.id,
+	}
+	_, err := e.tab.DOM.FocusWithParams(params)
 	return err
 }
 
@@ -605,14 +612,19 @@ func (e *Element) MouseOver() error {
 	if err != nil {
 		return err
 	}
-	return e.tab.MoveMouse(x, y)
+	return e.tab.MoveMouse(float64(x), float64(y))
 }
 
 // Returns the dimensions of the element.
 func (e *Element) Dimensions() ([]float64, error) {
 	var points []float64
 	e.lock.RLock()
-	box, err := e.tab.DOM.GetBoxModel(e.id)
+
+	params := &gcdapi.DOMGetBoxModelParams{
+		NodeId: e.id,
+	}
+	box, err := e.tab.DOM.GetBoxModelWithParams(params)
+
 	e.lock.RUnlock()
 
 	if err != nil {
