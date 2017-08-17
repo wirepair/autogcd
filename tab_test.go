@@ -125,6 +125,36 @@ func TestTabGetPageSource(t *testing.T) {
 	//t.Logf("source: %s\n", src)
 }
 
+func TestTabGetBodySize(t *testing.T) {
+	var err error
+
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	//tab.Debug(true)
+	if _, err := tab.Navigate(testServerAddr + "big_body.html"); err != nil {
+		t.Fatalf("Error navigating: %s\n", err)
+	}
+	tab.WaitStable()
+
+	bodies, err := tab.GetElementsBySelector("body")
+	if err != nil {
+		t.Fatalf("error getting body")
+	}
+	for _, body := range bodies {
+		size_f, _ := body.Dimensions()
+		t.Logf("body %#v\n", size_f)
+	}
+
+	doc, _ := tab.GetDocument()
+	size_d, _ := doc.Dimensions()
+	t.Logf("doc: %#v\n", size_d)
+}
+
 func TestTabFrameGetPageSource(t *testing.T) {
 	var src string
 	testAuto := testDefaultStartup(t)
