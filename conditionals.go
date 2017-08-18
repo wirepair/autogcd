@@ -71,8 +71,8 @@ func TitleContains(tab *Tab, searchTitle string) ConditionalFunc {
 // Returns true when the element exists and is ready
 func ElementByIdReady(tab *Tab, elementAttributeId string) ConditionalFunc {
 	return func(tab *Tab) bool {
-		_, ready, _ := tab.GetElementById(elementAttributeId)
-		return ready
+		element, _, _ := tab.GetElementById(elementAttributeId)
+		return (element != nil) && (element.IsReady())
 	}
 }
 
