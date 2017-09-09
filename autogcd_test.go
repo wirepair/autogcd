@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -64,9 +65,11 @@ func TestStart(t *testing.T) {
 	auto.SetTerminationHandler(nil)
 }
 
-func TestGetTab(t *testing.T) {
+func TestGetTabCheckVersion(t *testing.T) {
 	var err error
 	var tab *Tab
+	var product string
+
 	auto := testDefaultStartup(t)
 	defer auto.Shutdown()
 
@@ -77,6 +80,15 @@ func TestGetTab(t *testing.T) {
 
 	if tab.Target.Type != "page" {
 		t.Fatalf("Got tab but wasn't of type Page")
+	}
+
+	if _, product, _, _, _, err = tab.Browser.GetVersion(); err != nil {
+		t.Fatalf("Error getting browser version information: %s\n", err)
+	}
+
+	if !strings.Contains(product, auto.GetChromeRevision()) {
+		t.Fatalf("Error browser version: %s does not match gcd api version: %s\n", product, auto.GetChromeRevision())
+
 	}
 }
 

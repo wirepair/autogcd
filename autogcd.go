@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2016 isaac dawson
+Copyright (c) 2017 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -90,7 +90,7 @@ func NewAutoGcd(settings *Settings) *AutoGcd {
 
 // Default termination handling is to log, override with SetTerminationHandler
 func (auto *AutoGcd) defaultTerminationHandler(reason string) {
-	panic(fmt.Sprintf("chrome was terminated: %s\n", reason))
+	fmt.Printf("chrome was terminated: %s\n", reason)
 }
 
 // Allow callers to handle chrome terminating.
@@ -261,4 +261,8 @@ func (auto *AutoGcd) tabById(id string) (*Tab, error) {
 		return nil, &InvalidTabErr{"unknown tab id " + id}
 	}
 	return tab, nil
+}
+
+func (auto *AutoGcd) GetChromeRevision() string {
+	return auto.debugger.GetRevision()
 }

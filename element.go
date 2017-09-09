@@ -206,7 +206,8 @@ func (e *Element) GetSource() (string, error) {
 		return "", &InvalidElementErr{}
 	}
 	e.tab.debugf("id: %d\n", id)
-	return e.tab.DOM.GetOuterHTML(id)
+	outerParams := &gcdapi.DOMGetOuterHTMLParams{NodeId: id}
+	return e.tab.DOM.GetOuterHTMLWithParams(outerParams)
 }
 
 // Is this Element a #document?

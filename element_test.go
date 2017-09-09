@@ -115,7 +115,7 @@ func TestElementMouseOver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	//tab.Debug(true)
+
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
 		t.Logf("Got message %v\n", message)
 		if message.Text == "moused over" {
@@ -145,13 +145,13 @@ func TestElementMouseOver(t *testing.T) {
 		t.Fatalf("error moving mouse over button: %s\n", err)
 	}
 
-	timeout := time.NewTimer(time.Second * 8)
-	go func() {
+	timeout := time.NewTimer(time.Second * 4)
+	go func(timeout *time.Timer) {
 		select {
 		case <-timeout.C:
 			t.Fatalf("timed out waiting for button click event message")
 		}
-	}()
+	}(timeout)
 
 	wg.Wait()
 	timeout.Stop()

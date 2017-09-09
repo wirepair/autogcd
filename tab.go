@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2016 isaac dawson
+Copyright (c) 2017 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -661,7 +661,8 @@ func (t *Tab) GetPageSource(docNodeId int) (string, error) {
 	if !ok {
 		return "", &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
-	return t.DOM.GetOuterHTML(doc.id)
+	outerParams := &gcdapi.DOMGetOuterHTMLParams{NodeId: doc.id}
+	return t.DOM.GetOuterHTMLWithParams(outerParams)
 }
 
 // Returns the current url of the top level document
@@ -686,17 +687,26 @@ func (t *Tab) Click(x, y float64) error {
 func (t *Tab) click(x, y float64, clickCount int) error {
 	// "mousePressed", "mouseReleased", "mouseMoved"
 	// enum": ["none", "left", "middle", "right"]
-	pressed := "mousePressed"
-	released := "mouseReleased"
-	modifiers := 0
-	timestamp := 0.0
-	button := "left"
-	time.Now().Second()
-	if _, err := t.Input.DispatchMouseEvent(pressed, x, y, modifiers, timestamp, button, clickCount); err != nil {
+
+	mousePressedParams := &gcdapi.InputDispatchMouseEventParams{TheType: "mousePressed",
+		X:          x,
+		Y:          y,
+		Button:     "left",
+		ClickCount: clickCount,
+	}
+
+	if _, err := t.Input.DispatchMouseEventWithParams(mousePressedParams); err != nil {
 		return err
 	}
 
-	if _, err := t.Input.DispatchMouseEvent(released, x, y, modifiers, timestamp, button, clickCount); err != nil {
+	mouseReleasedParams := &gcdapi.InputDispatchMouseEventParams{TheType: "mouseReleased",
+		X:          x,
+		Y:          y,
+		Button:     "left",
+		ClickCount: clickCount,
+	}
+
+	if _, err := t.Input.DispatchMouseEventWithParams(mouseReleasedParams); err != nil {
 		return err
 	}
 	return nil
@@ -709,7 +719,12 @@ func (t *Tab) DoubleClick(x, y float64) error {
 
 // Moves the mouse to the x, y coords provided.
 func (t *Tab) MoveMouse(x, y float64) error {
-	_, err := t.Input.DispatchMouseEvent("mouseMoved", x, y, 0, 0.0, "none", 0)
+	mouseMovedParams := &gcdapi.InputDispatchMouseEventParams{TheType: "mouseMoved",
+		X: x,
+		Y: y,
+	}
+
+	_, err := t.Input.DispatchMouseEventWithParams(mouseMovedParams)
 	return err
 }
 
