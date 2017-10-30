@@ -62,12 +62,23 @@ func TestElementClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+
 	//tab.Debug(true)
+	//tab.DebugEvents(true)
 
 	_, err = tab.Navigate(testServerAddr + "button.html")
 	if err != nil {
 		t.Fatalf("Error navigating: %s\n", err)
 	}
+
+	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
+		//t.Logf("Got message %v\n", message)
+		if message.Text == "button clicked" {
+			callerTab.StopConsoleMessages(true)
+			wg.Done()
+		}
+	}
+	tab.GetConsoleMessages(msgHandler)
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementsBySelectorNotEmpty(tab, "button"))
 	if err != nil {
@@ -83,15 +94,6 @@ func TestElementClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error clicking button: %s\n", err)
 	}
-
-	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
-		//t.Logf("Got message %v\n", message)
-		if message.Text == "button clicked" {
-			callerTab.StopConsoleMessages(true)
-			wg.Done()
-		}
-	}
-	tab.GetConsoleMessages(msgHandler)
 
 	timeout := time.NewTimer(time.Second * 8)
 	go func() {
@@ -406,7 +408,7 @@ func TestElementSendKeys(t *testing.T) {
 		t.Fatalf("error finding input attr: %s\n", err)
 	}
 
-	err = ele.SendKeys("zomgs Test!\n")
+	err = ele.SendKeys("zomgs Test!\r")
 	if err != nil {
 		t.Fatalf("error sending keys: %s\n", err)
 	}

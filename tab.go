@@ -731,18 +731,7 @@ func (t *Tab) MoveMouse(x, y float64) error {
 // Sends keystrokes to whatever is focused, best called from Element.SendKeys which will
 // try to focus on the element first. Use \n for Enter, \b for backspace or \t for Tab.
 func (t *Tab) SendKeys(text string) error {
-	theType := "char"
-	modifiers := 0
-	timestamp := 0.0
-	unmodifiedText := ""
-	keyIdentifier := ""
-	code := ""
-	key := ""
-	windowsVirtualKeyCode := 0
-	nativeVirtualKeyCode := 0
-	autoRepeat := false
-	isKeypad := false
-	isSystemKey := false
+	inputParams := &gcdapi.InputDispatchKeyEventParams{TheType: "char"}
 
 	// loop over input, looking for system keys and handling them
 	for _, inputchar := range text {
@@ -756,7 +745,8 @@ func (t *Tab) SendKeys(text string) error {
 			}
 			continue
 		}
-		_, err := t.Input.DispatchKeyEvent(theType, modifiers, timestamp, input, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+		inputParams.Text = input
+		_, err := t.Input.DispatchKeyEventWithParams(inputParams)
 		if err != nil {
 			return err
 		}
@@ -766,31 +756,37 @@ func (t *Tab) SendKeys(text string) error {
 
 // Super ghetto, i know.
 func (t *Tab) pressSystemKey(systemKey string) error {
-	systemKeyCode := 0
-	keyIdentifier := ""
+	inputParams := &gcdapi.InputDispatchKeyEventParams{TheType: "rawKeyDown"}
+
 	switch systemKey {
 	case "\b":
-		keyIdentifier = "Backspace"
-		systemKeyCode = 8
+		inputParams.UnmodifiedText = "\b"
+		inputParams.Text = "\b"
+		inputParams.WindowsVirtualKeyCode = 8
+		inputParams.NativeVirtualKeyCode = 8
 	case "\t":
-		keyIdentifier = "Tab"
-		systemKeyCode = 9
+		inputParams.UnmodifiedText = "\t"
+		inputParams.Text = "\t"
+		inputParams.WindowsVirtualKeyCode = 9
+		inputParams.NativeVirtualKeyCode = 9
 	case "\r", "\n":
-		systemKey = "\r"
-		keyIdentifier = "Enter"
-		systemKeyCode = 13
+		inputParams.UnmodifiedText = "\r"
+		inputParams.Text = "\r"
+		inputParams.WindowsVirtualKeyCode = 13
+		inputParams.NativeVirtualKeyCode = 13
 	}
 
-	modifiers := 0
-	timestamp := 0.0
-	unmodifiedText := ""
-	autoRepeat := false
-	isKeypad := false
-	isSystemKey := false
-	if _, err := t.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, systemKey, systemKey, keyIdentifier, keyIdentifier, "", systemKeyCode, systemKeyCode, autoRepeat, isKeypad, isSystemKey); err != nil {
+	if _, err := t.Input.DispatchKeyEventWithParams(inputParams); err != nil {
 		return err
 	}
-	if _, err := t.Input.DispatchKeyEvent("char", modifiers, timestamp, systemKey, unmodifiedText, "", "", "", 0, 0, autoRepeat, isKeypad, isSystemKey); err != nil {
+
+	inputParams.TheType = "char"
+	if _, err := t.Input.DispatchKeyEventWithParams(inputParams); err != nil {
+		return err
+	}
+
+	inputParams.TheType = "keyUp"
+	if _, err := t.Input.DispatchKeyEventWithParams(inputParams); err != nil {
 		return err
 	}
 	return nil
