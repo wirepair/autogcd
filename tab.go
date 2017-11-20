@@ -294,11 +294,12 @@ func (t *Tab) GetTopNodeId() int {
 
 // Navigates to a URL and does not return until the Page.loadEventFired event
 // as well as all setChildNode events have completed.
-// Returns the frameId of the Tab that this navigation occured on or error.
-func (t *Tab) Navigate(url string) (string, error) {
+// If successful, returns frameId.
+// If failed, returns frameId, friendly error text, and the error.
+func (t *Tab) Navigate(url string) (string, string, error) {
 
 	if t.IsNavigating() {
-		return "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
+		return "", "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
 	}
 	t.setIsNavigating(true)
 	t.debugf("navigating to %s", url)
@@ -307,18 +308,18 @@ func (t *Tab) Navigate(url string) (string, error) {
 		t.setIsNavigating(false)
 	}()
 
-	frameId, err := t.Page.Navigate(url, "", "typed")
+	frameId, errorText, err := t.Page.Navigate(url, "", "typed")
 	if err != nil {
-		return "", err
+		return "", errorText, err
 	}
 	t.lastNodeChangeTimeVal.Store(time.Now())
 
 	err = t.readyWait(url)
 	if err != nil {
-		return frameId, err
+		return frameId, "", err
 	}
 	t.debugf("navigation complete")
-	return frameId, err
+	return frameId, "", err
 }
 
 // An undocumented method of determining if chromium failed to load

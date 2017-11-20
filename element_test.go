@@ -22,8 +22,8 @@ func TestElementDimensions(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementsBySelectorNotEmpty(tab, "button"))
@@ -66,9 +66,8 @@ func TestElementClick(t *testing.T) {
 	//tab.Debug(true)
 	//tab.DebugEvents(true)
 
-	_, err = tab.Navigate(testServerAddr + "button.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	msgHandler := func(callerTab *Tab, message *gcdapi.ConsoleConsoleMessage) {
@@ -127,9 +126,8 @@ func TestElementMouseOver(t *testing.T) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	_, err = tab.Navigate(testServerAddr + "mouseover.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "mouseover.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "button"))
@@ -179,9 +177,8 @@ func TestElementDoubleClick(t *testing.T) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	_, err = tab.Navigate(testServerAddr + "dblclick.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "dblclick.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "doubleclick"))
@@ -223,9 +220,8 @@ func TestElementGetSource(t *testing.T) {
 	}
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "button.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementsBySelectorNotEmpty(tab, "button"))
@@ -261,10 +257,10 @@ func TestElementGetAttributes(t *testing.T) {
 	}
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "attributes.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "attributes.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
+
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
 	if err != nil {
 		t.Fatalf("error finding attr, timed out waiting: %s\n", err)
@@ -318,10 +314,10 @@ func TestElementSetAttributeValue(t *testing.T) {
 	}
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "attributes.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "attributes.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
+
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
 	if err != nil {
 		t.Fatalf("error finding attr, timed out waiting: %s\n", err)
@@ -393,10 +389,10 @@ func TestElementSendKeys(t *testing.T) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	_, err = tab.Navigate(testServerAddr + "input.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "input.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
+
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
 	if err != nil {
 		src, _ := tab.GetPageSource(0)
@@ -427,9 +423,8 @@ func TestElementGetTag(t *testing.T) {
 	}
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "attributes.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "attributes.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "attr"))
@@ -464,9 +459,8 @@ func TestElementGetEventListeners(t *testing.T) {
 	}
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "events.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "events.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "divvie"))
@@ -503,9 +497,8 @@ func TestElementFrameGetTag(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	_, err = tab.Navigate(testServerAddr + "iframe.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	//tab.Debug(true)
 
@@ -552,9 +545,8 @@ func TestElementFrameSet(t *testing.T) {
 
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "frameset.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "frameset.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	if err := tab.WaitStable(); err != nil {
 		t.Fatalf("error waiting for stable: %s\n", err)
@@ -595,9 +587,8 @@ func TestElementInvalidated(t *testing.T) {
 	}
 	//tab.Debug(true)
 
-	_, err = tab.Navigate(testServerAddr + "invalidated.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "invalidated.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "child"))

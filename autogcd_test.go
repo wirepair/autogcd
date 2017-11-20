@@ -31,7 +31,7 @@ func init() {
 		flag.StringVar(&testPath, "chrome", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "path to chrome")
 		flag.StringVar(&testDir, "dir", "C:\\temp\\", "user directory")
 	case "darwin":
-		flag.StringVar(&testPath, "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "path to chrome")
+		flag.StringVar(&testPath, "chrome", "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary", "path to chrome")
 		flag.StringVar(&testDir, "dir", "/tmp/", "user directory")
 	case "linux":
 		flag.StringVar(&testPath, "chrome", "/usr/bin/chromium-browser", "path to chrome")

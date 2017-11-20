@@ -1,11 +1,12 @@
 package autogcd
 
 import (
-	"github.com/wirepair/gcd/gcdapi"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wirepair/gcd/gcdapi"
 )
 
 func TestTabNavigate(t *testing.T) {
@@ -17,8 +18,8 @@ func TestTabNavigate(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 }
 
@@ -31,8 +32,8 @@ func TestTabGetCurrentUrl(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "console.html?x=1"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "console.html?x=1"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -55,9 +56,10 @@ func TestTabGetTitle(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	tab.DebugEvents(true)
-	if _, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "index.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
+
 	title, err := tab.GetTitle()
 	if err != nil {
 		t.Fatalf("error getting url: %s\n", err)
@@ -86,9 +88,10 @@ func TestTabGetConsoleMessage(t *testing.T) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	if _, err := tab.Navigate(testServerAddr + "console_log.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "console_log.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
+
 	select {
 	case <-done:
 		return
@@ -108,8 +111,8 @@ func TestTabGetPageSource(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "inner.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -136,8 +139,8 @@ func TestTabGetBodySize(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	//tab.Debug(true)
-	if _, err := tab.Navigate(testServerAddr + "big_body.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "big_body.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -165,8 +168,8 @@ func TestTabFrameGetPageSource(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	//tab.Debug(true)
-	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	err = tab.WaitFor(testWaitRate, testWaitTimeout, ElementByIdReady(tab, "innerfr"))
@@ -209,8 +212,8 @@ func TestTabGetFrameResources(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "iframe.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	resourceMap, err = tab.GetFrameResources()
@@ -254,9 +257,10 @@ func TestTabPromptHandler(t *testing.T) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	if _, err := tab.Navigate(testServerAddr + "prompt.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "prompt.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
+
 	select {
 	case <-done:
 		return
@@ -275,8 +279,8 @@ func TestTabNavigationTimeout(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	tab.SetNavigationTimeout(10)
-	if _, err := tab.Navigate(testServerAddr + "prompt.html"); err == nil {
-		t.Fatalf("did not get an error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "prompt.html"); err == nil {
+		t.Fatalf("did not get an error navigating: %s %s\n", errorText, err)
 	}
 }
 
@@ -299,8 +303,8 @@ func TestTabInjectScript(t *testing.T) {
 	tab.GetConsoleMessages(msgHandler)
 	tab.InjectScriptOnLoad("console.log('inject ' + location.href);")
 	tab.InjectScriptOnLoad("console.log('inject 2' + location.href);")
-	if _, err := tab.Navigate(testServerAddr + "script.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "script.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	wg.Wait()
@@ -324,8 +328,8 @@ func TestTabEvaluateScript(t *testing.T) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	_, errEval := tab.EvaluateScript("JSON.stringify(document)")
 	if errEval != nil {
@@ -353,8 +357,8 @@ func TestTabTwoTabCookies(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab1.Navigate(testServerAddr + "cookie1.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab1.Navigate(testServerAddr + "cookie1.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	_, err = tab1.GetCookies()
@@ -362,8 +366,8 @@ func TestTabTwoTabCookies(t *testing.T) {
 		t.Fatalf("Error getting first tab cookies: %s\n", err)
 	}
 
-	if _, err := tab2.Navigate(testServerAddr + "cookie2.html"); err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab2.Navigate(testServerAddr + "cookie2.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 	_, err = tab2.GetCookies()
 	if err != nil {
@@ -396,16 +400,16 @@ func TestTabNetworkTraffic(t *testing.T) {
 		t.Fatalf("Error listening to network traffic: %s\n", err)
 	}
 
-	if _, err := tab1.Navigate(testServerAddr + "button.html"); err != nil {
-		t.Fatalf("error navigating to target: %s\n", err)
+	if _, errorText, err := tab1.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	tab2, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	if _, err := tab2.Navigate(testServerAddr + "console_log.html"); err != nil {
-		t.Fatalf("error navigating to target: %s\n", err)
+	if _, errorText, err := tab2.Navigate(testServerAddr + "console_log.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 }
@@ -417,8 +421,8 @@ func TestTabWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	if _, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
-		t.Fatalf("error opening first window")
+	if _, errorText, err := tab.Navigate(testServerAddr + "window_main.html"); err != nil {
+		t.Fatalf("error opening first window: %s %s", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -450,8 +454,8 @@ func TestTabAfterRedirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
-	if _, err := tab.Navigate(testServerAddr + "redirect.html"); err != nil {
-		t.Fatalf("error opening first window")
+	if _, errorText, err := tab.Navigate(testServerAddr + "redirect.html"); err != nil {
+		t.Fatalf("error opening first window: %s %s", errorText, err)
 	}
 
 	tab.WaitStable()
@@ -526,8 +530,8 @@ func TestTabGetElementAtLocation(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 
-	if _, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
-		t.Fatalf("error opening first window")
+	if _, errorText, err := tab.Navigate(testServerAddr + "button.html"); err != nil {
+		t.Fatalf("error opening first window: %s %s", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -558,8 +562,8 @@ func TestTabFrameRedirect(t *testing.T) {
 
 	//tab.Debug(true)
 
-	if _, err := tab.Navigate(testServerAddr + "frame_top.html"); err != nil {
-		t.Fatalf("error opening first window")
+	if _, errorText, err := tab.Navigate(testServerAddr + "frame_top.html"); err != nil {
+		t.Fatalf("error opening first window: %s %s", errorText, err)
 	}
 
 	tab.WaitStable()
@@ -634,8 +638,8 @@ func TestTabNavigationError(t *testing.T) {
 		t.Fatalf("error getting tab")
 	}
 	// test invalid domain name
-	if _, err := tab.Navigate("http://asdfasdf"); err != nil {
-		t.Fatalf("error opening first window: %s\n", err)
+	if _, errorText, err := tab.Navigate("http://asdfasdf"); err != nil {
+		t.Fatalf("error opening first window: %s %s", errorText, err)
 	}
 	tab.WaitStable()
 	ret, failText := tab.DidNavigationFail()
@@ -646,8 +650,8 @@ func TestTabNavigationError(t *testing.T) {
 	}
 
 	// test unopen port
-	if _, err := tab.Navigate("http://127.0.0.1:19145"); err != nil {
-		t.Fatalf("error opening window: %s\n", err)
+	if _, errorText, err := tab.Navigate("http://127.0.0.1:19145"); err != nil {
+		t.Fatalf("error opening window: %s %s", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -659,8 +663,8 @@ func TestTabNavigationError(t *testing.T) {
 	}
 
 	// test valid site
-	if _, err := tab.Navigate(testServerAddr); err != nil {
-		t.Fatalf("error opening window: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr); err != nil {
+		t.Fatalf("error opening window: %s %s", errorText, err)
 	}
 	tab.WaitStable()
 
@@ -680,8 +684,8 @@ func TestTabSslError(t *testing.T) {
 	//tab.Debug(true)
 	// Test expired SSL certificate
 	// "--test-type", "--ignore-certificate-errors", should not return any errors
-	if _, err := tab.Navigate("https://expired.identrustssl.com/"); err != nil {
-		t.Fatalf("error opening first window: %s\n", err)
+	if _, errorText, err := tab.Navigate("https://expired.identrustssl.com/"); err != nil {
+		t.Fatalf("error opening first window: %s %s", errorText, err)
 	}
 
 	ret, failText := tab.DidNavigationFail()
@@ -692,8 +696,8 @@ func TestTabSslError(t *testing.T) {
 	// Test invalid CN name
 	// example.com ip https://93.184.216.34/
 	// "--test-type", "--ignore-certificate-errors", should not return any errors
-	if _, err := tab.Navigate("https://93.184.216.34/"); err != nil {
-		t.Fatalf("error opening invalid cn host: %s\n", err)
+	if _, errorText, err := tab.Navigate("https://93.184.216.34/"); err != nil {
+		t.Fatalf("error opening invalid cn host: %s %s\n", errorText, err)
 	}
 
 	ret, failText = tab.DidNavigationFail()
@@ -722,7 +726,7 @@ func TestTabChromeTabCrash(t *testing.T) {
 	}()
 
 	tab.SetDisconnectedHandler(handlerFn)
-	if _, err := tab.Navigate("chrome://crash"); err == nil {
+	if _, _, err := tab.Navigate("chrome://crash"); err == nil {
 		t.Fatalf("crash window did not cause error\n")
 	}
 	<-doneCh
@@ -743,7 +747,7 @@ func TestTabChromeUnhandledCrash(t *testing.T) {
 	}()
 
 	tab.SetNavigationTimeout(10 * time.Second)
-	if _, err := tab.Navigate("chrome://crash"); err == nil {
+	if _, _, err := tab.Navigate("chrome://crash"); err == nil {
 		t.Fatalf("error opening crash did not return error\n")
 	}
 }
@@ -761,9 +765,8 @@ func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 	}
 	tab.GetConsoleMessages(msgHandler)
 
-	_, err = tab.Navigate(testServerAddr + "input.html")
-	if err != nil {
-		t.Fatalf("Error navigating: %s\n", err)
+	if _, errorText, err := tab.Navigate(testServerAddr + "input.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
 	}
 
 	tab.WaitStable()

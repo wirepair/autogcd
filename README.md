@@ -2,6 +2,7 @@
 Autogcd is a wrapper around the [gcd](https://github.com/wirepair/gcd/) library to enable automation of Google Chrome. It some what mimics the functionality offered by WebDriver but allows more low level access via the debugger service. 
 
 ## Changelog (2017)
+- November 20th: Updated to latest gcd / protocol.json file for 64.0.3269.3. Navigate now exposes friendly error text.
 - October 30th: Updated to latest gcd / protocol.json file for 64.0.3251.0.
 - September 9th: Updated to latest gcd / protocol.json file for 62.0.3202.9. We are now bound to the browser version (latest dev channel). See [gcd](https://github.com/wirepair/gcd/) updates for more information. Note if you change the gcd channel, you'll probably end up breaking a lot of methods in autogcd, so be warned.
 - August 15th: Updated to the latest gcd / protocol.json file.
