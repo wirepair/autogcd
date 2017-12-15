@@ -58,7 +58,7 @@ func main() {
 	}
 	configureTab(tab)
 
-	if _, err := tab.Navigate("https://www.google.co.jp"); err != nil {
+	if _, _, err := tab.Navigate("https://www.google.co.jp"); err != nil {
 		log.Fatalf("error going to google: %s\n", err)
 	}
 	log.Printf("navigation complete")
