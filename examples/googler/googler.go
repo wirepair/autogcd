@@ -2,13 +2,11 @@ package main
 
 import (
 	"flag"
-	"pavelatanasov.com/autogcd"
+	"github.com/wirepair/autogcd"
 	"io/ioutil"
 	"log"
 	"runtime"
 	"time"
-	_ "net/http/pprof"
-	"net/http"
 )
 
 var (
@@ -45,10 +43,6 @@ func init() {
 }
 
 func main() {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
 	flag.Parse()
 	settings := autogcd.NewSettings(chromePath, randUserDir())
 	settings.RemoveUserDir(true)           // clean up user directory after exit
@@ -108,8 +102,6 @@ func main() {
 		}
 	}
 	log.Printf("Done")
-
-	time.Sleep(1*time.Hour)
 }
 
 // Set various timeouts
