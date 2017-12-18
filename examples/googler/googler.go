@@ -35,7 +35,7 @@ func init() {
 		flag.StringVar(&chromePath, "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "path to chrome")
 		flag.StringVar(&userDir, "dir", "/tmp/", "user directory")
 	case "linux":
-		flag.StringVar(&chromePath, "chrome", "/usr/bin/google-chrome", "path to chrome")
+		flag.StringVar(&chromePath, "chrome", "/usr/bin/chromium-browser", "path to chrome")
 		flag.StringVar(&userDir, "dir", "/tmp/", "user directory")
 	}
 	flag.StringVar(&chromePort, "port", "9222", "Debugger port")
