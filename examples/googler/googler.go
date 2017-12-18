@@ -2,11 +2,13 @@ package main
 
 import (
 	"flag"
-	"github.com/wirepair/autogcd"
+	"pavelatanasov.com/autogcd"
 	"io/ioutil"
 	"log"
 	"runtime"
 	"time"
+	_ "net/http/pprof"
+	"net/http"
 )
 
 var (
@@ -35,7 +37,7 @@ func init() {
 		flag.StringVar(&chromePath, "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "path to chrome")
 		flag.StringVar(&userDir, "dir", "/tmp/", "user directory")
 	case "linux":
-		flag.StringVar(&chromePath, "chrome", "/usr/bin/chromium-browser", "path to chrome")
+		flag.StringVar(&chromePath, "chrome", "/usr/bin/google-chrome", "path to chrome")
 		flag.StringVar(&userDir, "dir", "/tmp/", "user directory")
 	}
 	flag.StringVar(&chromePort, "port", "9222", "Debugger port")
@@ -43,6 +45,10 @@ func init() {
 }
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	flag.Parse()
 	settings := autogcd.NewSettings(chromePath, randUserDir())
 	settings.RemoveUserDir(true)           // clean up user directory after exit
@@ -58,7 +64,7 @@ func main() {
 	}
 	configureTab(tab)
 
-	if _, err := tab.Navigate("https://www.google.co.jp"); err != nil {
+	if _, _, err := tab.Navigate("https://www.google.co.jp"); err != nil {
 		log.Fatalf("error going to google: %s\n", err)
 	}
 	log.Printf("navigation complete")
@@ -102,6 +108,8 @@ func main() {
 		}
 	}
 	log.Printf("Done")
+
+	time.Sleep(1*time.Hour)
 }
 
 // Set various timeouts

@@ -655,7 +655,10 @@ func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*
 
 // Get all elements that match a CSS or XPath selector
 func (t *Tab) GetElementsBySearch(selector string, includeUserAgentShadowDOM bool) ([]*Element, error) {
-	id, count, err := t.DOM.PerformSearch(selector, includeUserAgentShadowDOM)
+	var s gcdapi.DOMPerformSearchParams
+	s.Query = selector
+	s.IncludeUserAgentShadowDOM = includeUserAgentShadowDOM
+	id, count, err := t.DOM.PerformSearchWithParams(&s)
 	if err != nil {
 		return nil, err
 	}
@@ -664,7 +667,11 @@ func (t *Tab) GetElementsBySearch(selector string, includeUserAgentShadowDOM boo
 		return make([]*Element, 0), nil
 	}
 
-	nodeIds, errQuery := t.DOM.GetSearchResults(id, 0, count)
+	var r gcdapi.DOMGetSearchResultsParams
+	r.SearchId = id
+	r.FromIndex = 0
+	r.ToIndex = count
+	nodeIds, errQuery := t.DOM.GetSearchResultsWithParams(&r)
 	if errQuery != nil {
 		return nil, errQuery
 	}
