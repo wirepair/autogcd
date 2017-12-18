@@ -781,3 +781,28 @@ func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {
 		t.Fatalf("error sending keys: %s\n", err)
 	}
 }
+
+func TestTabSearchBySelector(t *testing.T) {
+	var err error
+
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+	//tab.Debug(true)
+	if _, errorText, err := tab.Navigate(testServerAddr + "table.html"); err != nil {
+		t.Fatalf("Error navigating: %s %s\n", errorText, err)
+	}
+	tab.WaitStable()
+
+	cells, err := tab.GetElementsBySearch(`//table[@id="t1"]//tr/td[1]/text()`, false)
+	if err != nil {
+		t.Fatalf("error getting cells")
+	}
+	for _, cell := range cells {
+		t.Logf("cell %#v\n", cell.characterData)
+	}
+}
