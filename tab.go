@@ -39,11 +39,11 @@ import (
 )
 
 // https://chromium.googlesource.com/chromium/src/+/master/third_party/WebKit/Source/core/inspector/InspectorNetworkAgent.cpp#96
-// 100MB
-const maximumTotalBufferSize = 100 * 1000 * 1000
+const maximumTotalBufferSize = -1
 
-// 10MB
-const maximumResourceBufferSize = 10 * 1000 * 1000
+const maximumResourceBufferSize = -1
+
+const maximumPostDataSize = -1
 
 // When we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
@@ -308,7 +308,7 @@ func (t *Tab) Navigate(url string) (string, string, error) {
 		t.setIsNavigating(false)
 	}()
 
-	frameId, errorText, err := t.Page.Navigate(url, "", "typed")
+	frameId, _, errorText, err := t.Page.Navigate(url, "", "typed")
 	if err != nil {
 		return "", errorText, err
 	}
@@ -988,7 +988,7 @@ func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, resp
 	if requestHandlerFn == nil && responseHandlerFn == nil && finishedHandlerFn == nil {
 		return nil
 	}
-	_, err := t.Network.Enable(maximumTotalBufferSize, maximumResourceBufferSize)
+	_, err := t.Network.Enable(maximumTotalBufferSize, maximumResourceBufferSize, maximumPostDataSize)
 	if err != nil {
 		return err
 	}
