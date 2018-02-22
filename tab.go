@@ -653,6 +653,38 @@ func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*
 	return elements, nil
 }
 
+// Get all elements that match a CSS or XPath selector
+func (t *Tab) GetElementsBySearch(selector string, includeUserAgentShadowDOM bool) ([]*Element, error) {
+	var s gcdapi.DOMPerformSearchParams
+	s.Query = selector
+	s.IncludeUserAgentShadowDOM = includeUserAgentShadowDOM
+	id, count, err := t.DOM.PerformSearchWithParams(&s)
+	if err != nil {
+		return nil, err
+	}
+
+	if count < 1 {
+		return make([]*Element, 0), nil
+	}
+
+	var r gcdapi.DOMGetSearchResultsParams
+	r.SearchId = id
+	r.FromIndex = 0
+	r.ToIndex = count
+	nodeIds, errQuery := t.DOM.GetSearchResultsWithParams(&r)
+	if errQuery != nil {
+		return nil, errQuery
+	}
+
+	elements := make([]*Element, len(nodeIds))
+
+	for k, nodeId := range nodeIds {
+		elements[k], _ = t.GetElementByNodeId(nodeId)
+	}
+
+	return elements, nil
+}
+
 // Returns the document's source, as visible, if docId is 0, returns top document source.
 func (t *Tab) GetPageSource(docNodeId int) (string, error) {
 	if docNodeId == 0 {
