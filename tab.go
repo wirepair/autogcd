@@ -894,6 +894,40 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 	return imgBytes, nil
 }
 
+// Takes a full sized screenshot of the currently loaded page
+func (t *Tab) GetFullPageScreenShot() ([]byte, error) {
+	var imgBytes []byte
+
+	_, _, rect, err := t.Page.GetLayoutMetrics()
+	if err != nil {
+		return nil, err
+	}
+
+	params := &gcdapi.PageCaptureScreenshotParams{
+		Format:  "png",
+		Quality: 100,
+		Clip: &gcdapi.PageViewport{
+			X:      rect.X,
+			Y:      rect.Y,
+			Width:  rect.Width,
+			Height: rect.Height,
+			Scale:  float64(1)},
+		FromSurface: true,
+	}
+
+	img, err := t.Page.CaptureScreenshotWithParams(params)
+	if err != nil {
+		return nil, err
+	}
+
+	imgBytes, err = base64.StdEncoding.DecodeString(img)
+	if err != nil {
+		return nil, err
+	}
+
+	return imgBytes, nil
+}
+
 // Returns the top document title
 func (t *Tab) GetTitle() (string, error) {
 	var title string
