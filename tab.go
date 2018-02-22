@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2017 isaac dawson
+Copyright (c) 2018 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -45,7 +45,7 @@ const maximumResourceBufferSize = -1
 
 const maximumPostDataSize = -1
 
-// When we are unable to find an element/nodeId
+// ElementNotFoundErr when we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
 	Message string
 }
@@ -54,7 +54,7 @@ func (e *ElementNotFoundErr) Error() string {
 	return "Unable to find element " + e.Message
 }
 
-// When we are unable to access a tab
+// InvalidTabErr when we are unable to access a tab
 type InvalidTabErr struct {
 	Message string
 }
@@ -63,7 +63,7 @@ func (e *InvalidTabErr) Error() string {
 	return "Unable to access tab: " + e.Message
 }
 
-// When unable to navigate Forward or Back
+// InvalidNavigationErr when unable to navigate Forward or Back
 type InvalidNavigationErr struct {
 	Message string
 }
@@ -72,7 +72,7 @@ func (e *InvalidNavigationErr) Error() string {
 	return e.Message
 }
 
-// Returned when an injected script caused an error
+// ScriptEvaluationErr returned when an injected script caused an error
 type ScriptEvaluationErr struct {
 	Message          string
 	ExceptionText    string
@@ -83,7 +83,7 @@ func (e *ScriptEvaluationErr) Error() string {
 	return e.Message + " " + e.ExceptionText
 }
 
-// When Tab.Navigate has timed out
+// TimeoutErr when Tab.Navigate has timed out
 type TimeoutErr struct {
 	Message string
 }
@@ -92,38 +92,38 @@ func (e *TimeoutErr) Error() string {
 	return "Timed out " + e.Message
 }
 
-// Internal response function type
+// GcdResponseFunc internal response function type
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
-// Called when the tab crashes or the inspector was disconnected
+// TabDisconnectedHandler is called when the tab crashes or the inspector was disconnected
 type TabDisconnectedHandler func(tab *Tab, reason string)
 
-// A function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
+// PromptHandlerFunc function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
 // Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
 type PromptHandlerFunc func(tab *Tab, message, promptType string)
 
-// A function for handling console messages
+// ConsoleMessageFunc function for handling console messages
 type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
 
-// A function for handling network requests
+// NetworkRequestHandlerFunc function for handling network requests
 type NetworkRequestHandlerFunc func(tab *Tab, request *NetworkRequest)
 
-// A function for handling network responses
+// NetworkResponseHandlerFunc function for handling network responses
 type NetworkResponseHandlerFunc func(tab *Tab, response *NetworkResponse)
 
-// A function for handling network finished, meaning it's safe to call Network.GetResponseBody
+// NetworkFinishedHandlerFunc function for handling network finished, meaning it's safe to call Network.GetResponseBody
 type NetworkFinishedHandlerFunc func(tab *Tab, requestId string, dataLength, timeStamp float64)
 
-// A function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
+// StorageFunc function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
 type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 
-// A function to listen for DOM Node Change Events
+// DomChangeHandlerFunc function to listen for DOM Node Change Events
 type DomChangeHandlerFunc func(tab *Tab, change *NodeChangeEvent)
 
-// A function to iteratively call until returns without error
+// ConditionalFunc function to iteratively call until returns without error
 type ConditionalFunc func(tab *Tab) bool
 
-// Our tab object for driving a specific tab and gathering elements.
+// Tab object for driving a specific tab and gathering elements.
 type Tab struct {
 	*gcd.ChromeTarget                            // underlying chrometarget
 	eleMutex              *sync.RWMutex          // locks our elements when added/removed.
@@ -194,7 +194,7 @@ func (t *Tab) close() {
 	t.setShutdownState(true)
 }
 
-// Is the tab shutting down?
+// IsShuttingDown answers if we are shutting down or not
 func (t *Tab) IsShuttingDown() bool {
 	if flag, ok := t.shutdown.Load().(bool); ok {
 		return flag
@@ -206,12 +206,12 @@ func (t *Tab) setShutdownState(val bool) {
 	t.shutdown.Store(val)
 }
 
-// Enable or disable internal debug printing
+// Debug enable or disable internal debug printing
 func (t *Tab) Debug(enabled bool) {
 	t.debug = enabled
 }
 
-// Set the disconnected handler so caller can trap when the debugger was disconnected/crashed.
+// SetDisconnectedHandler so caller can trap when the debugger was disconnected/crashed.
 func (t *Tab) SetDisconnectedHandler(handlerFn TabDisconnectedHandler) {
 	t.disconnectedHandler = handlerFn
 }
@@ -220,22 +220,22 @@ func (t *Tab) defaultDisconnectedHandler(tab *Tab, reason string) {
 	t.debugf("tab %s tabId: %s", reason, tab.ChromeTarget.Target.Id)
 }
 
-// How long to wait in seconds for navigations before giving up, default is 30 seconds
+// SetNavigationTimeout to wait in seconds for navigations before giving up, default is 30 seconds
 func (t *Tab) SetNavigationTimeout(timeout time.Duration) {
 	t.navigationTimeout = timeout
 }
 
-// How long to wait in seconds for ele.WaitForReady() before giving up, default is 5 seconds
+// SetElementWaitTimeout to wait in seconds for ele.WaitForReady() before giving up, default is 5 seconds
 func (t *Tab) SetElementWaitTimeout(timeout time.Duration) {
 	t.elementTimeout = timeout
 }
 
-// How long to wait for WaitStable() to return, default is 2 seconds.
+// SetStabilityTimeout to wait for WaitStable() to return, default is 2 seconds.
 func (t *Tab) SetStabilityTimeout(timeout time.Duration) {
 	t.stabilityTimeout = timeout
 }
 
-// How long to wait for no node changes before we consider the DOM stable.
+// SetStabilityTime to wait for no node changes before we consider the DOM stable.
 // Note that stability timeout will fire if the DOM is constantly changing.
 // The deafult stableAfter is 300 ms.
 func (t *Tab) SetStabilityTime(stableAfter time.Duration) {
@@ -246,7 +246,7 @@ func (t *Tab) setIsNavigating(set bool) {
 	t.isNavigatingFlag.Store(set)
 }
 
-// Are we currently navigating?
+// IsNavigating answers if we currently navigating
 func (t *Tab) IsNavigating() bool {
 	if flag, ok := t.isNavigatingFlag.Load().(bool); ok {
 		return flag
@@ -258,7 +258,7 @@ func (t *Tab) setIsTransitioning(set bool) {
 	t.isTransitioningFlag.Store(set)
 }
 
-// Returns true if we are transitioning to a new page. This is not set when Navigate is called.
+// IsTransitioning returns true if we are transitioning to a new page. This is not set when Navigate is called.
 func (t *Tab) IsTransitioning() bool {
 	if flag, ok := t.isTransitioningFlag.Load().(bool); ok {
 		return flag
@@ -270,7 +270,7 @@ func (t *Tab) setTopFrameId(topFrameId string) {
 	t.topFrameId.Store(topFrameId)
 }
 
-// Returns the top frame id of this tab
+// GetTopFrameId return the top frame id of this tab
 func (t *Tab) GetTopFrameId() string {
 	if frameId, ok := t.topFrameId.Load().(string); ok {
 		return frameId
@@ -283,7 +283,7 @@ func (t *Tab) setTopNodeId(nodeId int) {
 	t.topNodeId.Store(nodeId)
 }
 
-// Returns the current top node id of this Tab.
+// GetTopNodeId returns the current top node id of this Tab.
 func (t *Tab) GetTopNodeId() int {
 	if topNodeId, ok := t.topNodeId.Load().(int); ok {
 		return topNodeId
@@ -292,7 +292,7 @@ func (t *Tab) GetTopNodeId() int {
 	return -1
 }
 
-// Navigates to a URL and does not return until the Page.loadEventFired event
+// Navigate to a URL and does not return until the Page.loadEventFired event
 // as well as all setChildNode events have completed.
 // If successful, returns frameId.
 // If failed, returns frameId, friendly error text, and the error.
@@ -308,7 +308,8 @@ func (t *Tab) Navigate(url string) (string, string, error) {
 		t.setIsNavigating(false)
 	}()
 
-	frameId, _, errorText, err := t.Page.Navigate(url, "", "typed")
+	navParams := &gcdapi.PageNavigateParams{Url: url, TransitionType: "typed"}
+	frameId, _, errorText, err := t.Page.NavigateWithParams(navParams)
 	if err != nil {
 		return "", errorText, err
 	}
