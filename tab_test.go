@@ -1,6 +1,7 @@
 package autogcd
 
 import (
+	"crypto/md5"
 	"strings"
 	"sync"
 	"testing"
@@ -804,5 +805,31 @@ func TestTabSearchBySelector(t *testing.T) {
 	}
 	for _, cell := range cells {
 		t.Logf("cell %#v\n", cell.characterData)
+	}
+}
+
+func TestTabFullPageScreenShot(t *testing.T) {
+	testAuto := testDefaultStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	defer testAuto.CloseTab(tab)
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, errorText, err := tab.Navigate(testServerAddr + "background.html"); err != nil {
+		t.Fatalf("error navigating: %s %s\n", errorText, err)
+	}
+
+	tab.WaitStable()
+
+	data, err := tab.GetFullPageScreenShot()
+	if err != nil {
+		t.Fatalf("error making full page screenshot: %s\n", err.Error())
+	}
+
+	if md5.Sum(data) != []byte("5c16850da3d7a40fd18313f0432e15df") {
+		t.Fatalf("error, MD5 for full page screenshot does not match predefined value: %s\n", err.Error())
 	}
 }
