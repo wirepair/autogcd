@@ -2,6 +2,7 @@ package autogcd
 
 import (
 	"crypto/md5"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -829,7 +830,7 @@ func TestTabFullPageScreenShot(t *testing.T) {
 		t.Fatalf("error making full page screenshot: %s\n", err.Error())
 	}
 
-	if md5.Sum(data) != []byte("5c16850da3d7a40fd18313f0432e15df") {
+	if fmt.Sprintf("%x", md5.Sum(data)) != "5c16850da3d7a40fd18313f0432e15df" {
 		t.Fatalf("error, MD5 for full page screenshot does not match predefined value: %s\n", err.Error())
 	}
 }
