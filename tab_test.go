@@ -1,7 +1,9 @@
 package autogcd
 
 import (
+	"bytes"
 	"crypto/md5"
+	"encoding/hex"
 	"strings"
 	"sync"
 	"testing"
@@ -809,6 +811,11 @@ func TestTabSearchBySelector(t *testing.T) {
 }
 
 func TestTabFullPageScreenShot(t *testing.T) {
+	originalHash, err := hex.DecodeString("d9851069fe847316468b4a5c5fb90427")
+	if err != nil {
+		t.Fatalf("invalid original hash value: %s\n", err)
+	}
+
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 
@@ -822,14 +829,27 @@ func TestTabFullPageScreenShot(t *testing.T) {
 		t.Fatalf("error navigating: %s %s\n", errorText, err)
 	}
 
+	windowID, _, err := tab.Browser.GetWindowForTargetWithParams(&gcdapi.BrowserGetWindowForTargetParams{TargetId: tab.ChromeTarget.Target.Id})
+	if err != nil {
+		t.Fatalf("error getting windowId for target (%s), %s\n", tab.ChromeTarget.Target.Id, err)
+	}
+
+	browserBounds := &gcdapi.BrowserBounds{Left: 0, Top: 0, Width: 1024, Height: 768}
+	browserParams := &gcdapi.BrowserSetWindowBoundsParams{WindowId: windowID, Bounds: browserBounds}
+
+	if _, err := tab.Browser.SetWindowBoundsWithParams(browserParams); err != nil {
+		t.Fatalf("failed to set browser bounds: %s\n", err)
+	}
+
 	tab.WaitStable()
 
 	data, err := tab.GetFullPageScreenShot()
 	if err != nil {
-		t.Fatalf("error making full page screenshot: %s\n", err.Error())
+		t.Fatalf("error making full page screenshot: %s\n", err)
 	}
 
-	if md5.Sum(data) != []byte("5c16850da3d7a40fd18313f0432e15df") {
-		t.Fatalf("error, MD5 for full page screenshot does not match predefined value: %s\n", err.Error())
+	newHash := md5.Sum(data)
+	if !bytes.Equal(newHash[:], originalHash) {
+		t.Fatalf("error, MD5 for full page screenshot %x does not match predefined value: %x\n", newHash[:], originalHash)
 	}
 }
