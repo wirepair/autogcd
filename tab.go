@@ -575,7 +575,7 @@ func (t *Tab) GetDocumentElementById(docNodeId int, attributeId string) (*Elemen
 
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
-		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
 
 	selector := "#" + attributeId
@@ -638,7 +638,7 @@ func (t *Tab) recursivelyGetChildren(children []*gcdapi.DOMNode, elements *[]*El
 func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*Element, error) {
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
-		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
 	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.id, selector)
 	if errQuery != nil {
