@@ -1,6 +1,11 @@
 package autogcd
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -805,4 +810,45 @@ func TestTabSearchBySelector(t *testing.T) {
 	for _, cell := range cells {
 		t.Logf("cell %#v\n", cell.characterData)
 	}
+}
+
+func TestTabFullPageScreenShot(t *testing.T) {
+	originalHash, err := hex.DecodeString("5c16850da3d7a40fd18313f0432e15df")
+	if err != nil {
+		t.Fatalf("invalid original hash value: %s\n", err)
+	}
+
+	testAuto := testHeadlessStartup(t)
+	defer testAuto.Shutdown()
+
+	tab, err := testAuto.NewTab()
+	defer testAuto.CloseTab(tab)
+	if err != nil {
+		t.Fatalf("error getting tab")
+	}
+
+	if _, errorText, err := tab.Navigate(testServerAddr + "background.html"); err != nil {
+		t.Fatalf("error navigating: %s %s\n", errorText, err)
+	}
+
+	tab.WaitStable()
+
+	data, err := tab.GetFullPageScreenShot()
+	if err != nil {
+		t.Fatalf("error making full page screenshot: %s\n", err)
+	}
+
+	f, errFile := os.Create("test.png")
+	defer f.Close()
+	if errFile != nil {
+		fmt.Printf("error creating image file: %s\n", errFile)
+		return
+	}
+	f.Write(data)
+
+	newHash := md5.Sum(data)
+	if !bytes.Equal(newHash[:], originalHash) {
+		t.Fatalf("error, MD5 for full page screenshot %x does not match predefined value: %x\n", newHash[:], originalHash)
+	}
+
 }

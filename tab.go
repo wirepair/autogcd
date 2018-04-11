@@ -575,7 +575,7 @@ func (t *Tab) GetDocumentElementById(docNodeId int, attributeId string) (*Elemen
 
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
-		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
 
 	selector := "#" + attributeId
@@ -638,7 +638,7 @@ func (t *Tab) recursivelyGetChildren(children []*gcdapi.DOMNode, elements *[]*El
 func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*Element, error) {
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
-		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
 	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.id, selector)
 	if errQuery != nil {
@@ -891,6 +891,40 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return imgBytes, nil
+}
+
+// Takes a full sized screenshot of the currently loaded page
+func (t *Tab) GetFullPageScreenShot() ([]byte, error) {
+	var imgBytes []byte
+
+	_, _, rect, err := t.Page.GetLayoutMetrics()
+	if err != nil {
+		return nil, err
+	}
+
+	params := &gcdapi.PageCaptureScreenshotParams{
+		Format:  "png",
+		Quality: 100,
+		Clip: &gcdapi.PageViewport{
+			X:      rect.X,
+			Y:      rect.Y,
+			Width:  rect.Width,
+			Height: rect.Height,
+			Scale:  float64(1)},
+		FromSurface: true,
+	}
+
+	img, err := t.Page.CaptureScreenshotWithParams(params)
+	if err != nil {
+		return nil, err
+	}
+
+	imgBytes, err = base64.StdEncoding.DecodeString(img)
+	if err != nil {
+		return nil, err
+	}
+
 	return imgBytes, nil
 }
 
