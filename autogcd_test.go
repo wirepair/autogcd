@@ -172,6 +172,21 @@ func testDefaultStartup(t *testing.T) *AutoGcd {
 	return auto
 }
 
+func testHeadlessStartup(t *testing.T) *AutoGcd {
+	s := NewSettings(testPath, testRandomDir(t))
+	s.RemoveUserDir(true)
+	s.AddStartupFlags(testStartupFlags)
+	headlessFlags := []string{"--headless", "--hide-scrollbars"}
+	s.AddStartupFlags(headlessFlags)
+	s.SetDebuggerPort(testRandomPort(t))
+	auto := NewAutoGcd(s)
+	if err := auto.Start(); err != nil {
+		t.Fatalf("failed to start chrome: %s\n", err)
+	}
+	auto.SetTerminationHandler(nil) // do not want our tests to panic
+	return auto
+}
+
 func testServer() {
 	testListener, _ = net.Listen("tcp", ":0")
 	_, testServerPort, _ := net.SplitHostPort(testListener.Addr().String())
