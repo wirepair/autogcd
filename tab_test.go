@@ -712,49 +712,32 @@ func TestTabSslError(t *testing.T) {
 	}
 }
 
-func TestTabChromeTabCrash(t *testing.T) {
+func TestTabChromeCrash(t *testing.T) {
 	testAuto := testDefaultStartup(t)
 	defer testAuto.Shutdown()
 	tab, err := testAuto.NewTab()
 	if err != nil {
 		t.Fatalf("error getting tab")
 	}
+
 	timeout := time.NewTimer(time.Second * 10)
 	doneCh := make(chan struct{})
 	handlerFn := func(tab *Tab, reason string) {
 		doneCh <- struct{}{}
 	}
-
+	tab.Debug(true)
+	tab.DebugEvents(true)
 	go func() {
 		<-timeout.C
 		t.Fatalf("timed out waiting for termination event")
 	}()
 
 	tab.SetDisconnectedHandler(handlerFn)
-	if _, _, err := tab.Navigate("chrome://crash"); err == nil {
+	// apparently chrome://crash does not disconnect any more? but this will. id: 4/22/2018
+	if _, _, err := tab.Navigate("chrome://inducebrowsercrashforrealz/"); err == nil {
 		t.Fatalf("crash window did not cause error\n")
 	}
 	<-doneCh
-}
-
-func TestTabChromeUnhandledCrash(t *testing.T) {
-	testAuto := testDefaultStartup(t)
-	defer testAuto.Shutdown()
-	tab, err := testAuto.NewTab()
-	if err != nil {
-		t.Fatalf("error getting tab")
-	}
-	timeout := time.NewTimer(time.Second * 10)
-	//tab.Debug(true)
-	go func() {
-		<-timeout.C
-		t.Fatalf("timed out waiting for termination event")
-	}()
-
-	tab.SetNavigationTimeout(10 * time.Second)
-	if _, _, err := tab.Navigate("chrome://crash"); err == nil {
-		t.Fatalf("error opening crash did not return error\n")
-	}
 }
 
 func testMultiNavigateSendKeys(t *testing.T, wg *sync.WaitGroup, tab *Tab) {

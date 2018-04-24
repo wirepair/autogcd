@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2017 isaac dawson
+Copyright (c) 2018 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +37,7 @@ import (
 	"github.com/wirepair/gcd/gcdapi"
 )
 
-var GCDVERSION = "1.2018.1.17.0"
+var GCDVERSION = "1.2018.4.24.0"
 
 // When we get an error reading the body from the debugger api endpoint
 type GcdBodyReadErr struct {
@@ -111,7 +111,7 @@ func (c *Gcd) AddEnvironmentVars(vars []string) {
 // exePath - the path to the executable
 // userDir - the user directory to start from so we get a fresh profile
 // port - The port to listen on.
-func (c *Gcd) StartProcess(exePath, userDir, port string) {
+func (c *Gcd) StartProcess(exePath, userDir, port string) error {
 	c.port = port
 	c.addr = fmt.Sprintf("%s:%s", c.host, c.port)
 	c.apiEndpoint = fmt.Sprintf("http://%s/json", c.addr)
@@ -144,11 +144,17 @@ func (c *Gcd) StartProcess(exePath, userDir, port string) {
 			c.terminatedHandler(closeMessage)
 		}
 	}()
-	go c.probeDebugPort()
+
+	var err error
+	go func(err error) {
+		err = c.probeDebugPort()
+	}(err)
 	<-c.readyCh
+
+	return err
 }
 
-// Kills the process
+// ExitProcess kills the process
 func (c *Gcd) ExitProcess() error {
 	return c.chromeProcess.Kill()
 }
@@ -156,23 +162,29 @@ func (c *Gcd) ExitProcess() error {
 // ConnectToInstance connects to a running chrome instance without starting a local process
 // Host - The host destination.
 // Port - The port to listen on.
-func (c *Gcd) ConnectToInstance(host string, port string) {
+func (c *Gcd) ConnectToInstance(host string, port string) error {
 	c.host = host
 	c.port = port
 	c.addr = fmt.Sprintf("%s:%s", c.host, c.port)
 	c.apiEndpoint = fmt.Sprintf("http://%s/json", c.addr)
-	go c.probeDebugPort()
+
+	var err error
+	go func(err error) {
+		err = c.probeDebugPort()
+	}(err)
 	<-c.readyCh
+
+	return err
 }
 
-// Gets the primary tabs/processes to work with. Each will have their own references
+// GetTargets primary tabs/processes to work with. Each will have their own references
 // to the underlying API components (such as Page, Debugger, DOM etc).
 func (c *Gcd) GetTargets() ([]*ChromeTarget, error) {
 	empty := make(map[string]struct{}, 0)
 	return c.GetNewTargets(empty)
 }
 
-// Gets a list of current tabs and creates new chrome targets returning a list
+// GetNewTargets gets a list of current tabs and creates new chrome targets returning a list
 // provided they weren't in the knownIds list. Note it is an error to attempt
 // to create a new chrome target from one that already exists.
 func (c *Gcd) GetNewTargets(knownIds map[string]struct{}) ([]*ChromeTarget, error) {
@@ -213,7 +225,7 @@ func (c *Gcd) GetNewTargets(knownIds map[string]struct{}) ([]*ChromeTarget, erro
 	return chromeTargets, nil
 }
 
-// Create a new empty tab, returns the chrome target.
+// NewTab a new empty tab, returns the chrome target.
 func (c *Gcd) NewTab() (*ChromeTarget, error) {
 	resp, err := http.Get(c.apiEndpoint + "/new")
 	if err != nil {
@@ -234,11 +246,12 @@ func (c *Gcd) NewTab() (*ChromeTarget, error) {
 	return openChromeTarget(c.addr, tabTarget)
 }
 
+// GetRevision of chrome
 func (c *Gcd) GetRevision() string {
 	return gcdapi.CHROME_VERSION
 }
 
-// Closes the tab
+// CloseTab closes the target tab.
 func (c *Gcd) CloseTab(target *ChromeTarget) error {
 	target.shutdown() // close WS connection first
 	resp, err := http.Get(fmt.Sprintf("%s/close/%s", c.apiEndpoint, target.Target.Id))
@@ -250,7 +263,7 @@ func (c *Gcd) CloseTab(target *ChromeTarget) error {
 	return errRead
 }
 
-// Activates (focus) the tab.
+// ActivateTab (focus) the tab.
 func (c *Gcd) ActivateTab(target *ChromeTarget) error {
 	resp, err := http.Get(fmt.Sprintf("%s/activate/%s", c.apiEndpoint, target.Target.Id))
 	if err != nil {
@@ -262,7 +275,7 @@ func (c *Gcd) ActivateTab(target *ChromeTarget) error {
 }
 
 // probes the debugger report and signals when it's available.
-func (c *Gcd) probeDebugPort() {
+func (c *Gcd) probeDebugPort() error {
 	ticker := time.NewTicker(time.Millisecond * 100)
 	timeoutTicker := time.NewTicker(time.Second * c.timeout)
 
@@ -280,9 +293,9 @@ func (c *Gcd) probeDebugPort() {
 			}
 			defer resp.Body.Close()
 			c.readyCh <- struct{}{}
-			return
+			return nil
 		case <-timeoutTicker.C:
-			log.Fatalf("Unable to contact debugger at %s after %d seconds, gave up", c.apiEndpoint, c.timeout)
+			return fmt.Errorf("Unable to contact debugger at %s after %d seconds, gave up", c.apiEndpoint, c.timeout)
 		}
 	}
 }
