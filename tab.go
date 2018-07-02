@@ -997,7 +997,9 @@ func (t *Tab) DeleteCookie(cookieName, url string) error {
 
 // Override the user agent for requests going out.
 func (t *Tab) SetUserAgent(userAgent string) error {
-	_, err := t.Network.SetUserAgentOverride(userAgent)
+	_, err := t.Network.SetUserAgentOverrideWithParams(&gcdapi.NetworkSetUserAgentOverrideParams{
+		UserAgent: userAgent,
+	})
 	return err
 }
 
