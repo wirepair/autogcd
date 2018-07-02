@@ -9,13 +9,13 @@
     "gcdapi",
     "gcdmessage"
   ]
-  revision = "daea95af954a7d99b9c8fdb669a6d6626087cafa"
+  revision = "3231a1db3b2236110c12850400000c9624168272"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["websocket"]
-  revision = "5f9ae10d9af5b1c89ae6904293b14b064d4ada23"
+  revision = "4cb1c02c05b0e749b0365f61ae859a8e0cfceed9"
 
 [solve-meta]
   analyzer-name = "dep"
