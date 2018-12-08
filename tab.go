@@ -543,7 +543,7 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 
 // Returns the element given the x, y coordinates on the page, or returns error.
 func (t *Tab) GetElementByLocation(x, y int) (*Element, error) {
-	nodeId, err := t.DOM.GetNodeForLocation(x, y, false)
+	_, nodeId, err := t.DOM.GetNodeForLocation(x, y, false)
 	if err != nil {
 		return nil, err
 	}

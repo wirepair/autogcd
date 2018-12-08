@@ -31,7 +31,7 @@ type AccessibilityAXRelatedNode struct {
 
 // No Description.
 type AccessibilityAXProperty struct {
-	Name  string                `json:"name"`  // The name of this property. enum values: busy, disabled, hidden, hiddenRoot, invalid, keyshortcuts, roledescription, live, atomic, relevant, root, autocomplete, hasPopup, level, multiselectable, orientation, multiline, readonly, required, valuemin, valuemax, valuetext, checked, expanded, modal, pressed, selected, activedescendant, controls, describedby, details, errormessage, flowto, labelledby, owns
+	Name  string                `json:"name"`  // The name of this property. enum values: busy, disabled, editable, focusable, focused, hidden, hiddenRoot, invalid, keyshortcuts, settable, roledescription, live, atomic, relevant, root, autocomplete, hasPopup, level, multiselectable, orientation, multiline, readonly, required, valuemin, valuemax, valuetext, checked, expanded, modal, pressed, selected, activedescendant, controls, describedby, details, errormessage, flowto, labelledby, owns
 	Value *AccessibilityAXValue `json:"value"` // The value of this property.
 }
 
@@ -64,6 +64,16 @@ type Accessibility struct {
 func NewAccessibility(target gcdmessage.ChromeTargeter) *Accessibility {
 	c := &Accessibility{target: target}
 	return c
+}
+
+// Disables the accessibility domain.
+func (c *Accessibility) Disable() (*gcdmessage.ChromeResponse, error) {
+	return gcdmessage.SendDefaultRequest(c.target, c.target.GetSendCh(), &gcdmessage.ParamRequest{Id: c.target.GetId(), Method: "Accessibility.disable"})
+}
+
+// Enables the accessibility domain which causes `AXNodeId`s to remain consistent between method calls. This turns on accessibility for the page, which can impact performance until accessibility is disabled.
+func (c *Accessibility) Enable() (*gcdmessage.ChromeResponse, error) {
+	return gcdmessage.SendDefaultRequest(c.target, c.target.GetSendCh(), &gcdmessage.ParamRequest{Id: c.target.GetId(), Method: "Accessibility.enable"})
 }
 
 type AccessibilityGetPartialAXTreeParams struct {
@@ -122,4 +132,36 @@ func (c *Accessibility) GetPartialAXTree(nodeId int, backendNodeId int, objectId
 	v.ObjectId = objectId
 	v.FetchRelatives = fetchRelatives
 	return c.GetPartialAXTreeWithParams(&v)
+}
+
+// GetFullAXTree - Fetches the entire accessibility tree
+// Returns -  nodes -
+func (c *Accessibility) GetFullAXTree() ([]*AccessibilityAXNode, error) {
+	resp, err := gcdmessage.SendCustomReturn(c.target, c.target.GetSendCh(), &gcdmessage.ParamRequest{Id: c.target.GetId(), Method: "Accessibility.getFullAXTree"})
+	if err != nil {
+		return nil, err
+	}
+
+	var chromeData struct {
+		Result struct {
+			Nodes []*AccessibilityAXNode
+		}
+	}
+
+	if resp == nil {
+		return nil, &gcdmessage.ChromeEmptyResponseErr{}
+	}
+
+	// test if error first
+	cerr := &gcdmessage.ChromeErrorResponse{}
+	json.Unmarshal(resp.Data, cerr)
+	if cerr != nil && cerr.Error != nil {
+		return nil, &gcdmessage.ChromeRequestErr{Resp: cerr}
+	}
+
+	if err := json.Unmarshal(resp.Data, &chromeData); err != nil {
+		return nil, err
+	}
+
+	return chromeData.Result.Nodes, nil
 }
