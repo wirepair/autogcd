@@ -36,6 +36,7 @@ import (
 
 	"github.com/wirepair/gcd"
 	"github.com/wirepair/gcd/gcdapi"
+	"github.com/wirepair/gcd/gcdmessage"
 )
 
 // https://chromium.googlesource.com/chromium/src/+/master/third_party/WebKit/Source/core/inspector/InspectorNetworkAgent.cpp#96
@@ -240,6 +241,10 @@ func (t *Tab) SetStabilityTimeout(timeout time.Duration) {
 // The deafult stableAfter is 300 ms.
 func (t *Tab) SetStabilityTime(stableAfter time.Duration) {
 	t.stableAfter = stableAfter
+}
+
+func (t *Tab) SetDownloadBehavior(behavior, downloadPath string) (*gcdmessage.ChromeResponse, error) {
+	return t.Page.SetDownloadBehavior(behavior, downloadPath)
 }
 
 func (t *Tab) setIsNavigating(set bool) {
