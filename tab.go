@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2017 isaac dawson
+Copyright (c) 2018 isaac dawson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -40,13 +40,13 @@ import (
 )
 
 // https://chromium.googlesource.com/chromium/src/+/master/third_party/WebKit/Source/core/inspector/InspectorNetworkAgent.cpp#96
-// 100MB
-const maximumTotalBufferSize = 100 * 1000 * 1000
+const maximumTotalBufferSize = -1
 
-// 10MB
-const maximumResourceBufferSize = 10 * 1000 * 1000
+const maximumResourceBufferSize = -1
 
-// When we are unable to find an element/nodeId
+const maximumPostDataSize = -1
+
+// ElementNotFoundErr when we are unable to find an element/nodeId
 type ElementNotFoundErr struct {
 	Message string
 }
@@ -55,7 +55,7 @@ func (e *ElementNotFoundErr) Error() string {
 	return "Unable to find element " + e.Message
 }
 
-// When we are unable to access a tab
+// InvalidTabErr when we are unable to access a tab
 type InvalidTabErr struct {
 	Message string
 }
@@ -64,7 +64,7 @@ func (e *InvalidTabErr) Error() string {
 	return "Unable to access tab: " + e.Message
 }
 
-// When unable to navigate Forward or Back
+// InvalidNavigationErr when unable to navigate Forward or Back
 type InvalidNavigationErr struct {
 	Message string
 }
@@ -73,7 +73,7 @@ func (e *InvalidNavigationErr) Error() string {
 	return e.Message
 }
 
-// Returned when an injected script caused an error
+// ScriptEvaluationErr returned when an injected script caused an error
 type ScriptEvaluationErr struct {
 	Message          string
 	ExceptionText    string
@@ -84,7 +84,7 @@ func (e *ScriptEvaluationErr) Error() string {
 	return e.Message + " " + e.ExceptionText
 }
 
-// When Tab.Navigate has timed out
+// TimeoutErr when Tab.Navigate has timed out
 type TimeoutErr struct {
 	Message string
 }
@@ -93,38 +93,38 @@ func (e *TimeoutErr) Error() string {
 	return "Timed out " + e.Message
 }
 
-// Internal response function type
+// GcdResponseFunc internal response function type
 type GcdResponseFunc func(target *gcd.ChromeTarget, payload []byte)
 
-// Called when the tab crashes or the inspector was disconnected
+// TabDisconnectedHandler is called when the tab crashes or the inspector was disconnected
 type TabDisconnectedHandler func(tab *Tab, reason string)
 
-// A function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
+// PromptHandlerFunc function to handle javascript dialog prompts as they occur, pass to SetJavaScriptPromptHandler
 // Internally this should call tab.Page.HandleJavaScriptDialog(accept bool, promptText string)
 type PromptHandlerFunc func(tab *Tab, message, promptType string)
 
-// A function for handling console messages
+// ConsoleMessageFunc function for handling console messages
 type ConsoleMessageFunc func(tab *Tab, message *gcdapi.ConsoleConsoleMessage)
 
-// A function for handling network requests
+// NetworkRequestHandlerFunc function for handling network requests
 type NetworkRequestHandlerFunc func(tab *Tab, request *NetworkRequest)
 
-// A function for handling network responses
+// NetworkResponseHandlerFunc function for handling network responses
 type NetworkResponseHandlerFunc func(tab *Tab, response *NetworkResponse)
 
-// A function for handling network finished, meaning it's safe to call Network.GetResponseBody
+// NetworkFinishedHandlerFunc function for handling network finished, meaning it's safe to call Network.GetResponseBody
 type NetworkFinishedHandlerFunc func(tab *Tab, requestId string, dataLength, timeStamp float64)
 
-// A function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
+// StorageFunc function for ListenStorageEvents returns the eventType of cleared, updated, removed or added.
 type StorageFunc func(tab *Tab, eventType string, eventDetails *StorageEvent)
 
-// A function to listen for DOM Node Change Events
+// DomChangeHandlerFunc function to listen for DOM Node Change Events
 type DomChangeHandlerFunc func(tab *Tab, change *NodeChangeEvent)
 
-// A function to iteratively call until returns without error
+// ConditionalFunc function to iteratively call until returns without error
 type ConditionalFunc func(tab *Tab) bool
 
-// Our tab object for driving a specific tab and gathering elements.
+// Tab object for driving a specific tab and gathering elements.
 type Tab struct {
 	*gcd.ChromeTarget                            // underlying chrometarget
 	eleMutex              *sync.RWMutex          // locks our elements when added/removed.
@@ -195,7 +195,7 @@ func (t *Tab) close() {
 	t.setShutdownState(true)
 }
 
-// Is the tab shutting down?
+// IsShuttingDown answers if we are shutting down or not
 func (t *Tab) IsShuttingDown() bool {
 	if flag, ok := t.shutdown.Load().(bool); ok {
 		return flag
@@ -207,12 +207,12 @@ func (t *Tab) setShutdownState(val bool) {
 	t.shutdown.Store(val)
 }
 
-// Enable or disable internal debug printing
+// Debug enable or disable internal debug printing
 func (t *Tab) Debug(enabled bool) {
 	t.debug = enabled
 }
 
-// Set the disconnected handler so caller can trap when the debugger was disconnected/crashed.
+// SetDisconnectedHandler so caller can trap when the debugger was disconnected/crashed.
 func (t *Tab) SetDisconnectedHandler(handlerFn TabDisconnectedHandler) {
 	t.disconnectedHandler = handlerFn
 }
@@ -221,22 +221,22 @@ func (t *Tab) defaultDisconnectedHandler(tab *Tab, reason string) {
 	t.debugf("tab %s tabId: %s", reason, tab.ChromeTarget.Target.Id)
 }
 
-// How long to wait in seconds for navigations before giving up, default is 30 seconds
+// SetNavigationTimeout to wait in seconds for navigations before giving up, default is 30 seconds
 func (t *Tab) SetNavigationTimeout(timeout time.Duration) {
 	t.navigationTimeout = timeout
 }
 
-// How long to wait in seconds for ele.WaitForReady() before giving up, default is 5 seconds
+// SetElementWaitTimeout to wait in seconds for ele.WaitForReady() before giving up, default is 5 seconds
 func (t *Tab) SetElementWaitTimeout(timeout time.Duration) {
 	t.elementTimeout = timeout
 }
 
-// How long to wait for WaitStable() to return, default is 2 seconds.
+// SetStabilityTimeout to wait for WaitStable() to return, default is 2 seconds.
 func (t *Tab) SetStabilityTimeout(timeout time.Duration) {
 	t.stabilityTimeout = timeout
 }
 
-// How long to wait for no node changes before we consider the DOM stable.
+// SetStabilityTime to wait for no node changes before we consider the DOM stable.
 // Note that stability timeout will fire if the DOM is constantly changing.
 // The deafult stableAfter is 300 ms.
 func (t *Tab) SetStabilityTime(stableAfter time.Duration) {
@@ -251,7 +251,7 @@ func (t *Tab) setIsNavigating(set bool) {
 	t.isNavigatingFlag.Store(set)
 }
 
-// Are we currently navigating?
+// IsNavigating answers if we currently navigating
 func (t *Tab) IsNavigating() bool {
 	if flag, ok := t.isNavigatingFlag.Load().(bool); ok {
 		return flag
@@ -263,7 +263,7 @@ func (t *Tab) setIsTransitioning(set bool) {
 	t.isTransitioningFlag.Store(set)
 }
 
-// Returns true if we are transitioning to a new page. This is not set when Navigate is called.
+// IsTransitioning returns true if we are transitioning to a new page. This is not set when Navigate is called.
 func (t *Tab) IsTransitioning() bool {
 	if flag, ok := t.isTransitioningFlag.Load().(bool); ok {
 		return flag
@@ -275,7 +275,7 @@ func (t *Tab) setTopFrameId(topFrameId string) {
 	t.topFrameId.Store(topFrameId)
 }
 
-// Returns the top frame id of this tab
+// GetTopFrameId return the top frame id of this tab
 func (t *Tab) GetTopFrameId() string {
 	if frameId, ok := t.topFrameId.Load().(string); ok {
 		return frameId
@@ -288,7 +288,7 @@ func (t *Tab) setTopNodeId(nodeId int) {
 	t.topNodeId.Store(nodeId)
 }
 
-// Returns the current top node id of this Tab.
+// GetTopNodeId returns the current top node id of this Tab.
 func (t *Tab) GetTopNodeId() int {
 	if topNodeId, ok := t.topNodeId.Load().(int); ok {
 		return topNodeId
@@ -297,13 +297,14 @@ func (t *Tab) GetTopNodeId() int {
 	return -1
 }
 
-// Navigates to a URL and does not return until the Page.loadEventFired event
+// Navigate to a URL and does not return until the Page.loadEventFired event
 // as well as all setChildNode events have completed.
-// Returns the frameId of the Tab that this navigation occured on or error.
-func (t *Tab) Navigate(url string) (string, error) {
+// If successful, returns frameId.
+// If failed, returns frameId, friendly error text, and the error.
+func (t *Tab) Navigate(url string) (string, string, error) {
 
 	if t.IsNavigating() {
-		return "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
+		return "", "", &InvalidNavigationErr{Message: "Unable to navigate, already navigating."}
 	}
 	t.setIsNavigating(true)
 	t.debugf("navigating to %s", url)
@@ -312,18 +313,19 @@ func (t *Tab) Navigate(url string) (string, error) {
 		t.setIsNavigating(false)
 	}()
 
-	frameId, err := t.Page.Navigate(url, "", "typed")
+	navParams := &gcdapi.PageNavigateParams{Url: url, TransitionType: "typed"}
+	frameId, _, errorText, err := t.Page.NavigateWithParams(navParams)
 	if err != nil {
-		return "", err
+		return "", errorText, err
 	}
 	t.lastNodeChangeTimeVal.Store(time.Now())
 
 	err = t.readyWait(url)
 	if err != nil {
-		return frameId, err
+		return frameId, "", err
 	}
 	t.debugf("navigation complete")
-	return frameId, err
+	return frameId, "", err
 }
 
 // An undocumented method of determining if chromium failed to load
@@ -546,7 +548,7 @@ func (t *Tab) GetElementByNodeId(nodeId int) (*Element, bool) {
 
 // Returns the element given the x, y coordinates on the page, or returns error.
 func (t *Tab) GetElementByLocation(x, y int) (*Element, error) {
-	nodeId, err := t.DOM.GetNodeForLocation(x, y, false)
+	_, nodeId, err := t.DOM.GetNodeForLocation(x, y, false)
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +580,7 @@ func (t *Tab) GetDocumentElementById(docNodeId int, attributeId string) (*Elemen
 
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
-		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+		return nil, false, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
 
 	selector := "#" + attributeId
@@ -641,9 +643,41 @@ func (t *Tab) recursivelyGetChildren(children []*gcdapi.DOMNode, elements *[]*El
 func (t *Tab) GetDocumentElementsBySelector(docNodeId int, selector string) ([]*Element, error) {
 	docNode, ok := t.getElement(docNodeId)
 	if !ok {
-		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %s not found", docNodeId)}
+		return nil, &ElementNotFoundErr{Message: fmt.Sprintf("docNodeId %d not found", docNodeId)}
 	}
 	nodeIds, errQuery := t.DOM.QuerySelectorAll(docNode.id, selector)
+	if errQuery != nil {
+		return nil, errQuery
+	}
+
+	elements := make([]*Element, len(nodeIds))
+
+	for k, nodeId := range nodeIds {
+		elements[k], _ = t.GetElementByNodeId(nodeId)
+	}
+
+	return elements, nil
+}
+
+// Get all elements that match a CSS or XPath selector
+func (t *Tab) GetElementsBySearch(selector string, includeUserAgentShadowDOM bool) ([]*Element, error) {
+	var s gcdapi.DOMPerformSearchParams
+	s.Query = selector
+	s.IncludeUserAgentShadowDOM = includeUserAgentShadowDOM
+	id, count, err := t.DOM.PerformSearchWithParams(&s)
+	if err != nil {
+		return nil, err
+	}
+
+	if count < 1 {
+		return make([]*Element, 0), nil
+	}
+
+	var r gcdapi.DOMGetSearchResultsParams
+	r.SearchId = id
+	r.FromIndex = 0
+	r.ToIndex = count
+	nodeIds, errQuery := t.DOM.GetSearchResultsWithParams(&r)
 	if errQuery != nil {
 		return nil, errQuery
 	}
@@ -736,18 +770,7 @@ func (t *Tab) MoveMouse(x, y float64) error {
 // Sends keystrokes to whatever is focused, best called from Element.SendKeys which will
 // try to focus on the element first. Use \n for Enter, \b for backspace or \t for Tab.
 func (t *Tab) SendKeys(text string) error {
-	theType := "char"
-	modifiers := 0
-	timestamp := 0.0
-	unmodifiedText := ""
-	keyIdentifier := ""
-	code := ""
-	key := ""
-	windowsVirtualKeyCode := 0
-	nativeVirtualKeyCode := 0
-	autoRepeat := false
-	isKeypad := false
-	isSystemKey := false
+	inputParams := &gcdapi.InputDispatchKeyEventParams{TheType: "char"}
 
 	// loop over input, looking for system keys and handling them
 	for _, inputchar := range text {
@@ -761,7 +784,8 @@ func (t *Tab) SendKeys(text string) error {
 			}
 			continue
 		}
-		_, err := t.Input.DispatchKeyEvent(theType, modifiers, timestamp, input, unmodifiedText, keyIdentifier, code, key, windowsVirtualKeyCode, nativeVirtualKeyCode, autoRepeat, isKeypad, isSystemKey)
+		inputParams.Text = input
+		_, err := t.Input.DispatchKeyEventWithParams(inputParams)
 		if err != nil {
 			return err
 		}
@@ -771,31 +795,37 @@ func (t *Tab) SendKeys(text string) error {
 
 // Super ghetto, i know.
 func (t *Tab) pressSystemKey(systemKey string) error {
-	systemKeyCode := 0
-	keyIdentifier := ""
+	inputParams := &gcdapi.InputDispatchKeyEventParams{TheType: "rawKeyDown"}
+
 	switch systemKey {
 	case "\b":
-		keyIdentifier = "Backspace"
-		systemKeyCode = 8
+		inputParams.UnmodifiedText = "\b"
+		inputParams.Text = "\b"
+		inputParams.WindowsVirtualKeyCode = 8
+		inputParams.NativeVirtualKeyCode = 8
 	case "\t":
-		keyIdentifier = "Tab"
-		systemKeyCode = 9
+		inputParams.UnmodifiedText = "\t"
+		inputParams.Text = "\t"
+		inputParams.WindowsVirtualKeyCode = 9
+		inputParams.NativeVirtualKeyCode = 9
 	case "\r", "\n":
-		systemKey = "\r"
-		keyIdentifier = "Enter"
-		systemKeyCode = 13
+		inputParams.UnmodifiedText = "\r"
+		inputParams.Text = "\r"
+		inputParams.WindowsVirtualKeyCode = 13
+		inputParams.NativeVirtualKeyCode = 13
 	}
 
-	modifiers := 0
-	timestamp := 0.0
-	unmodifiedText := ""
-	autoRepeat := false
-	isKeypad := false
-	isSystemKey := false
-	if _, err := t.Input.DispatchKeyEvent("rawKeyDown", modifiers, timestamp, systemKey, systemKey, keyIdentifier, keyIdentifier, "", systemKeyCode, systemKeyCode, autoRepeat, isKeypad, isSystemKey); err != nil {
+	if _, err := t.Input.DispatchKeyEventWithParams(inputParams); err != nil {
 		return err
 	}
-	if _, err := t.Input.DispatchKeyEvent("char", modifiers, timestamp, systemKey, unmodifiedText, "", "", "", 0, 0, autoRepeat, isKeypad, isSystemKey); err != nil {
+
+	inputParams.TheType = "char"
+	if _, err := t.Input.DispatchKeyEventWithParams(inputParams); err != nil {
+		return err
+	}
+
+	inputParams.TheType = "keyUp"
+	if _, err := t.Input.DispatchKeyEventWithParams(inputParams); err != nil {
 		return err
 	}
 	return nil
@@ -869,6 +899,40 @@ func (t *Tab) GetScreenShot() ([]byte, error) {
 	return imgBytes, nil
 }
 
+// Takes a full sized screenshot of the currently loaded page
+func (t *Tab) GetFullPageScreenShot() ([]byte, error) {
+	var imgBytes []byte
+
+	_, _, rect, err := t.Page.GetLayoutMetrics()
+	if err != nil {
+		return nil, err
+	}
+
+	params := &gcdapi.PageCaptureScreenshotParams{
+		Format:  "png",
+		Quality: 100,
+		Clip: &gcdapi.PageViewport{
+			X:      rect.X,
+			Y:      rect.Y,
+			Width:  rect.Width,
+			Height: rect.Height,
+			Scale:  float64(1)},
+		FromSurface: true,
+	}
+
+	img, err := t.Page.CaptureScreenshotWithParams(params)
+	if err != nil {
+		return nil, err
+	}
+
+	imgBytes, err = base64.StdEncoding.DecodeString(img)
+	if err != nil {
+		return nil, err
+	}
+
+	return imgBytes, nil
+}
+
 // Returns the top document title
 func (t *Tab) GetTitle() (string, error) {
 	var title string
@@ -938,7 +1002,9 @@ func (t *Tab) DeleteCookie(cookieName, url string) error {
 
 // Override the user agent for requests going out.
 func (t *Tab) SetUserAgent(userAgent string) error {
-	_, err := t.Network.SetUserAgentOverride(userAgent)
+	_, err := t.Network.SetUserAgentOverrideWithParams(&gcdapi.NetworkSetUserAgentOverrideParams{
+		UserAgent: userAgent,
+	})
 	return err
 }
 
@@ -964,7 +1030,7 @@ func (t *Tab) GetNetworkTraffic(requestHandlerFn NetworkRequestHandlerFunc, resp
 	if requestHandlerFn == nil && responseHandlerFn == nil && finishedHandlerFn == nil {
 		return nil
 	}
-	_, err := t.Network.Enable(maximumTotalBufferSize, maximumResourceBufferSize)
+	_, err := t.Network.Enable(maximumTotalBufferSize, maximumResourceBufferSize, maximumPostDataSize)
 	if err != nil {
 		return err
 	}

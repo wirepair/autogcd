@@ -561,15 +561,12 @@ func (e *Element) Clear() error {
 		return &ElementNotReadyErr{}
 	}
 
-	if e.nodeName != "textarea" || e.nodeName != "input" {
-		return &IncorrectElementTypeErr{ExpectedName: "textarea or input", NodeName: e.nodeName}
-	}
-
 	if e.nodeName == "textarea" {
 		_, err = e.tab.DOM.SetNodeValue(e.id, "")
-	}
-	if e.nodeName == "input" {
+	} else if e.nodeName == "input" {
 		_, err = e.tab.DOM.SetAttributeValue(e.id, "value", "")
+	} else {
+		err = &IncorrectElementTypeErr{ExpectedName: "textarea or input", NodeName: e.nodeName}
 	}
 	return err
 }
